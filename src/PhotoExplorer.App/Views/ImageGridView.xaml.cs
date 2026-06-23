@@ -10,7 +10,6 @@ namespace PhotoExplorer.App.Views;
 public partial class ImageGridView : UserControl
 {
     private Point _dragStartPoint;
-    private ImageItemViewModel? _dragSource;
 
     public ImageGridView() => InitializeComponent();
 
@@ -72,7 +71,6 @@ public partial class ImageGridView : UserControl
             vm.IsSelected = true;
         }
 
-        _dragSource = vm;
         e.Handled = false;
     }
 

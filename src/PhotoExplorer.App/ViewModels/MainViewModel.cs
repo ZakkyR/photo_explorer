@@ -118,12 +118,18 @@ public partial class MainViewModel : ObservableObject
         // サムネイルを非同期で生成
         _ = Task.Run(async () =>
         {
-            foreach (var vm in vms)
+            try
             {
-                var bytes = await _imageService.GenerateThumbnailAsync(vm.Model.FilePath);
-                Application.Current.Dispatcher.Invoke(() => vm.SetThumbnailFromBytes(bytes));
+                foreach (var vm in vms)
+                {
+                    var bytes = await _imageService.GenerateThumbnailAsync(vm.Model.FilePath);
+                    Application.Current.Dispatcher.Invoke(() => vm.SetThumbnailFromBytes(bytes));
+                }
             }
-            Application.Current.Dispatcher.Invoke(() => IsLoading = false);
+            finally
+            {
+                Application.Current.Dispatcher.Invoke(() => IsLoading = false);
+            }
         });
     }
 
@@ -159,10 +165,14 @@ public partial class MainViewModel : ObservableObject
 
     private async void OnFolderChanged(object? sender, FolderChangedEventArgs e)
     {
-        if (SelectedFolder == e.FolderPath)
-            await SelectFolderAsync(e.FolderPath);
-        else if (SelectedAlbum?.FolderPaths.Contains(e.FolderPath) == true)
-            await SelectAlbumAsync(SelectedAlbum);
+        try
+        {
+            if (SelectedFolder == e.FolderPath)
+                await SelectFolderAsync(e.FolderPath);
+            else if (SelectedAlbum?.FolderPaths.Contains(e.FolderPath) == true)
+                await SelectAlbumAsync(SelectedAlbum);
+        }
+        catch { /* FileSystemWatcher callbacks must not crash the process */ }
     }
 
     partial void OnThumbnailSizeChanged(double value)

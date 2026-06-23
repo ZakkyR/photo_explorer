@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/PhotoExplorer.App/PhotoExplorer.App.csproj" />
+    <Project Path="src/PhotoExplorer.Core/PhotoExplorer.Core.csproj" />
+    <Project Path="src/PhotoExplorer.Data/PhotoExplorer.Data.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/PhotoExplorer.Tests/PhotoExplorer.Tests.csproj" />
+  </Folder>
+</Solution>

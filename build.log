@@ -1,0 +1,13 @@
+  復元対象のプロジェクトを決定しています...
+  C:\Users\Zakky\source\repos\photo_explorer\src\PhotoExplorer.Data\PhotoExplorer.Data.csproj を復元しました (363 ミリ秒)。
+  4 個中 3 個の復元対象のプロジェクトは最新です。
+  PhotoExplorer.Data -> C:\Users\Zakky\source\repos\photo_explorer\src\PhotoExplorer.Data\bin\Debug\net8.0\PhotoExplorer.Data.dll
+  PhotoExplorer.Core -> C:\Users\Zakky\source\repos\photo_explorer\src\PhotoExplorer.Core\bin\Debug\net8.0\PhotoExplorer.Core.dll
+  PhotoExplorer.Tests -> C:\Users\Zakky\source\repos\photo_explorer\tests\PhotoExplorer.Tests\bin\Debug\net8.0\PhotoExplorer.Tests.dll
+  PhotoExplorer.App -> C:\Users\Zakky\source\repos\photo_explorer\src\PhotoExplorer.App\bin\Debug\net8.0-windows\PhotoExplorer.App.dll
+
+ビルドに成功しました。
+    0 個の警告
+    0 エラー
+
+経過時間 00:00:06.70

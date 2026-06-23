@@ -4,8 +4,12 @@ using Microsoft.Win32;
 using PhotoExplorer.Core.Models;
 using PhotoExplorer.Core.Services;
 using System.Collections.ObjectModel;
+using System.IO;
+using System.Security.Cryptography;
+using System.Text;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Media.Imaging;
 
 namespace PhotoExplorer.App.ViewModels;
 
@@ -161,16 +165,21 @@ public partial class MainViewModel : ObservableObject
         await RefreshTagFiltersAsync();
         ApplyTagFilter();
 
-        // サムネイルを非同期で生成
+        // サムネイルを並列生成（WIC + ディスクキャッシュ）
+        Directory.CreateDirectory(ThumbnailCacheDir);
         _ = Task.Run(async () =>
         {
             try
             {
-                foreach (var vm in vms)
-                {
-                    var bytes = await _imageService.GenerateThumbnailAsync(vm.Model.FilePath);
-                    Application.Current.Dispatcher.Invoke(() => vm.SetThumbnailFromBytes(bytes));
-                }
+                await Parallel.ForEachAsync(vms,
+                    new ParallelOptions { MaxDegreeOfParallelism = 4 },
+                    (vm, _) =>
+                    {
+                        var thumbnail = LoadThumbnailFast(vm.Model.FilePath);
+                        if (thumbnail != null)
+                            Application.Current.Dispatcher.Invoke(() => vm.Thumbnail = thumbnail);
+                        return ValueTask.CompletedTask;
+                    });
             }
             finally
             {
@@ -235,6 +244,55 @@ public partial class MainViewModel : ObservableObject
     public bool HasMultipleSelected => FilteredImages.Count(x => x.IsSelected) > 1;
 
     private const double FullImageThreshold = 300.0;
+
+    private static readonly string ThumbnailCacheDir = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "PhotoExplorer", "thumbnails");
+
+    private const int CacheThumbnailSize = 300;
+
+    private static string GetCachePath(string filePath)
+    {
+        var lastWrite = File.GetLastWriteTimeUtc(filePath).Ticks;
+        var key = Convert.ToHexString(MD5.HashData(Encoding.UTF8.GetBytes(filePath)));
+        return Path.Combine(ThumbnailCacheDir, $"{key}_{lastWrite:x}.jpg");
+    }
+
+    private static BitmapSource? LoadThumbnailFast(string filePath)
+    {
+        try
+        {
+            var cachePath = GetCachePath(filePath);
+            string source = File.Exists(cachePath) ? cachePath : filePath;
+
+            var bmp = new BitmapImage();
+            bmp.BeginInit();
+            bmp.UriSource = new Uri(source);
+            bmp.CacheOption = BitmapCacheOption.OnLoad;
+            if (source == filePath)
+                bmp.DecodePixelWidth = CacheThumbnailSize;
+            bmp.EndInit();
+            bmp.Freeze();
+
+            if (source == filePath)
+                SaveCache(cachePath, bmp);
+
+            return bmp;
+        }
+        catch { return null; }
+    }
+
+    private static void SaveCache(string cachePath, BitmapSource bmp)
+    {
+        try
+        {
+            var encoder = new JpegBitmapEncoder { QualityLevel = 85 };
+            encoder.Frames.Add(BitmapFrame.Create(bmp));
+            using var fs = new FileStream(cachePath, FileMode.Create);
+            encoder.Save(fs);
+        }
+        catch { }
+    }
 
     partial void OnThumbnailSizeChanged(double value)
     {

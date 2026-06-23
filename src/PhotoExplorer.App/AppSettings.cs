@@ -15,6 +15,10 @@ public class AppSettings
     public double WindowHeight { get; set; } = 800;
     public string? LastSelectedFolder { get; set; }
     public double ThumbnailSize { get; set; } = 150;
+    public double PreviewLeft { get; set; } = 100;
+    public double PreviewTop { get; set; } = 100;
+    public double PreviewWidth { get; set; } = 900;
+    public double PreviewHeight { get; set; } = 650;
 
     public static AppSettings Load()
     {

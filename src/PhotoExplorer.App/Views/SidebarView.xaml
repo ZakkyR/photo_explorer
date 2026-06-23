@@ -40,6 +40,18 @@
                         <DataTemplate>
                             <Border Background="Transparent" Padding="8,4" Cursor="Hand"
                                     MouseLeftButtonDown="AlbumItem_Click">
+                                <Border.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="フォルダを管理..."
+                                                  Click="ManageFolders_Click"
+                                                  Tag="{Binding}"/>
+                                        <Separator/>
+                                        <MenuItem Header="削除"
+                                                  CommandParameter="{Binding Id}"
+                                                  Command="{Binding DataContext.DeleteAlbumCommand,
+                                                    RelativeSource={RelativeSource AncestorType=ItemsControl}}"/>
+                                    </ContextMenu>
+                                </Border.ContextMenu>
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock Text="&#x1F4D2; " FontSize="14"/>
                                     <TextBlock Text="{Binding Name}" VerticalAlignment="Center"/>

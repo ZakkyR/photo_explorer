@@ -87,6 +87,26 @@ public partial class MainViewModel : ObservableObject
         Albums.Add(album);
     }
 
+    [RelayCommand]
+    private async Task DeleteAlbum(int albumId)
+    {
+        var album = Albums.FirstOrDefault(a => a.Id == albumId);
+        if (album == null) return;
+        await _albumService.DeleteAlbumAsync(albumId);
+        Albums.Remove(album);
+        if (SelectedAlbum?.Id == albumId) { AllImages.Clear(); FilteredImages.Clear(); SelectedAlbum = null; }
+    }
+
+    public async Task RefreshAlbumAsync(int albumId)
+    {
+        var updated = (await _albumService.GetAlbumsAsync()).FirstOrDefault(a => a.Id == albumId);
+        if (updated == null) return;
+        var idx = Albums.IndexOf(Albums.FirstOrDefault(a => a.Id == albumId)!);
+        if (idx >= 0) Albums[idx] = updated;
+        if (SelectedAlbum?.Id == albumId)
+            await SelectAlbumAsync(updated);
+    }
+
     public async Task SelectFolderAsync(string path)
     {
         SelectedFolder = path;

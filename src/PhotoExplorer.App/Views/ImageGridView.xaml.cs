@@ -87,9 +87,8 @@ public partial class ImageGridView : UserControl
             if (dialog.ShowDialog() == true)
             {
                 foreach (var selVm in selected)
-                {
                     selVm.Model.Tags = (await tagService.GetTagsAsync(selVm.Model.FilePath)).ToList();
-                }
+                await mainVm.RefreshTagFiltersAsync();
                 mainVm.ApplyTagFilter();
             }
         }
@@ -100,6 +99,7 @@ public partial class ImageGridView : UserControl
             if (dialog.ShowDialog() == true)
             {
                 vm.Model.Tags = (await tagService.GetTagsAsync(vm.Model.FilePath)).ToList();
+                await mainVm.RefreshTagFiltersAsync();
                 mainVm.ApplyTagFilter();
             }
         }

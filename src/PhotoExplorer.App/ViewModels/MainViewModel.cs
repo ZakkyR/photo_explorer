@@ -185,8 +185,13 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
-    private Task RefreshTagFiltersAsync()
+    public Task RefreshTagFiltersAsync()
     {
+        var previouslySelected = TagFilters
+            .Where(t => t.IsSelected)
+            .Select(t => t.Name)
+            .ToHashSet();
+
         var tagNames = AllImages
             .SelectMany(vm => vm.Model.Tags.Select(t => t.Name))
             .Distinct()
@@ -196,7 +201,7 @@ public partial class MainViewModel : ObservableObject
         TagFilters.Clear();
         foreach (var name in tagNames)
         {
-            var item = new TagFilterItem(name);
+            var item = new TagFilterItem(name) { IsSelected = previouslySelected.Contains(name) };
             item.SelectionChanged += (_, _) => ApplyTagFilter();
             TagFilters.Add(item);
         }

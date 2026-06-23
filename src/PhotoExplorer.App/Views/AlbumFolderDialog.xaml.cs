@@ -9,6 +9,7 @@ public partial class AlbumFolderDialog : Window
 {
     private readonly Album _album;
     private readonly IAlbumService _albumService;
+    private readonly IFolderService _folderService;
 
     public new string Title => $"フォルダを管理 — {_album.Name}";
     public ObservableCollection<string> AlbumFolders { get; } = new();
@@ -18,9 +19,15 @@ public partial class AlbumFolderDialog : Window
     {
         _album = album;
         _albumService = albumService;
+        _folderService = folderService;
         DataContext = this;
         InitializeComponent();
-        _ = LoadFoldersAsync(folderService);
+        this.Loaded += AlbumFolderDialog_Loaded;
+    }
+
+    private async void AlbumFolderDialog_Loaded(object sender, RoutedEventArgs e)
+    {
+        await LoadFoldersAsync(_folderService);
     }
 
     private async Task LoadFoldersAsync(IFolderService folderService)

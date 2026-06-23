@@ -141,7 +141,13 @@ public partial class MainViewModel : ObservableObject
         SelectedAlbum = null;
         SelectedFolderPath = path;
         App.AppSettings.LastSelectedFolder = path;
-        await LoadImagesAsync(await _imageService.LoadImagesFromFolderAsync(path, _tagService));
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var items = await _imageService.LoadImagesFromFolderAsync(path, _tagService);
+        PerfLog($"[PERF] LoadImagesFromFolder: {sw.ElapsedMilliseconds}ms ({items.Count} files)");
+        sw.Restart();
+        await LoadImagesAsync(items);
+        PerfLog($"[PERF] LoadImagesAsync (setup): {sw.ElapsedMilliseconds}ms");
     }
 
     public async Task SelectAlbumAsync(Album album)
@@ -169,20 +175,26 @@ public partial class MainViewModel : ObservableObject
         Directory.CreateDirectory(ThumbnailCacheDir);
         _ = Task.Run(async () =>
         {
+            var swThumb = System.Diagnostics.Stopwatch.StartNew();
+            int cached = 0, generated = 0;
             try
             {
                 await Parallel.ForEachAsync(vms,
                     new ParallelOptions { MaxDegreeOfParallelism = 4 },
                     (vm, _) =>
                     {
+                        bool fromCache = File.Exists(GetCachePath(vm.Model.FilePath));
                         var thumbnail = LoadThumbnailFast(vm.Model.FilePath);
+                        if (fromCache) Interlocked.Increment(ref cached);
+                        else Interlocked.Increment(ref generated);
                         if (thumbnail != null)
-                            Application.Current.Dispatcher.Invoke(() => vm.Thumbnail = thumbnail);
+                            Application.Current.Dispatcher.BeginInvoke(() => vm.Thumbnail = thumbnail);
                         return ValueTask.CompletedTask;
                     });
             }
             finally
             {
+                PerfLog($"[PERF] Thumbnails: {swThumb.ElapsedMilliseconds}ms (cache={cached}, generated={generated})");
                 Application.Current.Dispatcher.Invoke(() => IsLoading = false);
             }
         });
@@ -260,26 +272,37 @@ public partial class MainViewModel : ObservableObject
 
     private static BitmapSource? LoadThumbnailFast(string filePath)
     {
+        // UriSource はバックグラウンドスレッドから呼ぶと COM STA マーシャリングで極端に遅くなる。
+        // StreamSource 経由で FileStream を渡すことで回避する。
         try
         {
             var cachePath = GetCachePath(filePath);
-            string source = File.Exists(cachePath) ? cachePath : filePath;
+            bool hasCache = File.Exists(cachePath);
+            string source = hasCache ? cachePath : filePath;
 
+            using var stream = new FileStream(source, FileMode.Open, FileAccess.Read, FileShare.Read);
             var bmp = new BitmapImage();
             bmp.BeginInit();
-            bmp.UriSource = new Uri(source);
+            bmp.StreamSource = stream;
             bmp.CacheOption = BitmapCacheOption.OnLoad;
-            if (source == filePath)
+            if (!hasCache)
                 bmp.DecodePixelWidth = CacheThumbnailSize;
             bmp.EndInit();
             bmp.Freeze();
 
-            if (source == filePath)
+            if (!hasCache)
                 SaveCache(cachePath, bmp);
 
             return bmp;
         }
         catch { return null; }
+    }
+
+    private static readonly string PerfLogPath = Path.Combine(Path.GetTempPath(), "photo_explorer_perf.txt");
+    private static void PerfLog(string msg)
+    {
+        var line = $"[{DateTime.Now:HH:mm:ss.fff}] {msg}";
+        File.AppendAllText(PerfLogPath, line + Environment.NewLine);
     }
 
     private static void SaveCache(string cachePath, BitmapSource bmp)

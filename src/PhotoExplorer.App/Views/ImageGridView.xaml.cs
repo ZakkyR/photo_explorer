@@ -74,6 +74,16 @@ public partial class ImageGridView : UserControl
         e.Handled = false;
     }
 
+    private void ScrollViewer_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (!Keyboard.IsKeyDown(Key.LeftCtrl) && !Keyboard.IsKeyDown(Key.RightCtrl)) return;
+
+        // e.Delta は標準マウス 1 ノッチで ±120。20px/ノッチ でエクスプローラーに近い操作感
+        var newSize = Math.Clamp(Vm.ThumbnailSize + e.Delta / 6.0, 80, 500);
+        Vm.ThumbnailSize = newSize;
+        e.Handled = true; // ScrollViewer のスクロールをキャンセル
+    }
+
     private async void TagMenuItem_Click(object sender, RoutedEventArgs e)
     {
         var mainVm = Vm;

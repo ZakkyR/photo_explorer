@@ -40,12 +40,12 @@
             </Grid.ColumnDefinitions>
             <TextBox x:Name="NewTagBox" Grid.Column="0" Margin="0,0,4,0"
                      KeyDown="NewTagBox_KeyDown"/>
-            <Button Grid.Column="1" Content="追加" Click="AddTag_Click" Padding="8,2"/>
+            <Button x:Name="AddButton" Grid.Column="1" Content="追加" Click="AddTag_Click" Padding="8,2"/>
         </Grid>
 
         <!-- Close button -->
         <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right">
-            <Button Content="完了" IsDefault="True" Click="Done_Click" Padding="12,4"/>
+            <Button Content="完了" Click="Done_Click" Padding="12,4"/>
         </StackPanel>
     </Grid>
 </Window>

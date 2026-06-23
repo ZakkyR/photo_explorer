@@ -12,6 +12,7 @@ public partial class BulkTagEditDialog : Window
 {
     private readonly IReadOnlyList<ImageItem> _items;
     private readonly ITagService _tagService;
+    private bool _hasChanges;
 
     public ObservableCollection<string> CommonTags { get; } = new();
 
@@ -44,20 +45,25 @@ public partial class BulkTagEditDialog : Window
     {
         var name = NewTagBox.Text.Trim();
         if (string.IsNullOrEmpty(name)) return;
-
-        foreach (var item in _items)
+        AddButton.IsEnabled = false;
+        try
         {
-            if (!item.Tags.Any(t => t.Name == name))
-                await _tagService.AddTagAsync(item.FilePath, name);
+            foreach (var item in _items)
+            {
+                if (!item.Tags.Any(t => t.Name == name))
+                    await _tagService.AddTagAsync(item.FilePath, name);
+            }
+            foreach (var item in _items)
+                item.Tags = (await _tagService.GetTagsAsync(item.FilePath)).ToList();
+            NewTagBox.Clear();
+            RefreshCommonTags();
+            _hasChanges = true;
         }
-
-        // Refresh model tags
-        foreach (var item in _items)
-            item.Tags = (await _tagService.GetTagsAsync(item.FilePath)).ToList();
-
-        NewTagBox.Clear();
-        RefreshCommonTags();
-        DialogResult = true;
+        finally
+        {
+            AddButton.IsEnabled = true;
+            NewTagBox.Focus();
+        }
     }
 
     private async void RemoveCommonTag_Click(object sender, RoutedEventArgs e)
@@ -69,20 +75,22 @@ public partial class BulkTagEditDialog : Window
                 if (item.Tags.Any(t => t.Name == tagName))
                     await _tagService.RemoveTagAsync(item.FilePath, tagName);
             }
-
-            // Refresh model tags
             foreach (var item in _items)
                 item.Tags = (await _tagService.GetTagsAsync(item.FilePath)).ToList();
-
             RefreshCommonTags();
-            DialogResult = true;
+            _hasChanges = true;
         }
     }
 
     private void NewTagBox_KeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key == Key.Enter) AddTag_Click(sender, e);
+        if (e.Key != Key.Enter) return;
+        e.Handled = true;
+        AddTag_Click(sender, e);
     }
 
-    private void Done_Click(object sender, RoutedEventArgs e) => Close();
+    private void Done_Click(object sender, RoutedEventArgs e)
+    {
+        DialogResult = _hasChanges;
+    }
 }

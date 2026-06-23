@@ -39,11 +39,11 @@
                             </ContextMenu>
                         </Border.ContextMenu>
                         <Grid>
-                            <Image Source="{Binding Thumbnail}" Stretch="Uniform"/>
+                            <Image Source="{Binding DisplayImage}" Stretch="Uniform"/>
                             <!-- サムネイル未生成時のプレースホルダー -->
                             <TextBlock Text="🖼️" FontSize="32"
                                        HorizontalAlignment="Center" VerticalAlignment="Center"
-                                       Visibility="{Binding Thumbnail, Converter={StaticResource NullToVisibilityConverter}}"/>
+                                       Visibility="{Binding DisplayImage, Converter={StaticResource NullToVisibilityConverter}}"/>
                             <!-- ファイル名ラベル -->
                             <TextBlock Text="{Binding Model.FileName}"
                                        VerticalAlignment="Bottom" Background="#80000000"

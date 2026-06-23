@@ -177,6 +177,12 @@ public partial class MainViewModel : ObservableObject
                 Application.Current.Dispatcher.Invoke(() => IsLoading = false);
             }
         });
+
+        if (ThumbnailSize >= FullImageThreshold)
+        {
+            foreach (var vm in FilteredImages)
+                vm.LoadFullImage();
+        }
     }
 
     private Task RefreshTagFiltersAsync()
@@ -223,6 +229,21 @@ public partial class MainViewModel : ObservableObject
 
     public bool HasMultipleSelected => FilteredImages.Count(x => x.IsSelected) > 1;
 
+    private const double FullImageThreshold = 300.0;
+
     partial void OnThumbnailSizeChanged(double value)
-        => App.AppSettings.ThumbnailSize = value;
+    {
+        App.AppSettings.ThumbnailSize = value;
+
+        if (value >= FullImageThreshold)
+        {
+            foreach (var vm in FilteredImages)
+                vm.LoadFullImage();
+        }
+        else
+        {
+            foreach (var vm in FilteredImages)
+                vm.ClearFullImage();
+        }
+    }
 }

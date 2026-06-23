@@ -1,0 +1,6 @@
+<UserControl x:Class="PhotoExplorer.App.Views.TagFilterView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- Placeholder: implemented in a later task -->
+    <Grid/>
+</UserControl>

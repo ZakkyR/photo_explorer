@@ -90,6 +90,12 @@ public partial class ImageGridView : UserControl
         var selected = mainVm.FilteredImages.Where(x => x.IsSelected).ToList();
         var tagService = App.Services.GetRequiredService<PhotoExplorer.Core.Services.ITagService>();
 
+        // ContextMenu は別 Visual Tree で動くため PlacementTarget 経由で確実に vm を取得する
+        var menuItem = sender as MenuItem;
+        var contextMenu = menuItem?.Parent as ContextMenu;
+        var placementBorder = contextMenu?.PlacementTarget as FrameworkElement;
+        var targetVm = placementBorder?.DataContext as ImageItemViewModel;
+
         if (selected.Count > 1)
         {
             var dialog = new BulkTagEditDialog(selected.Select(x => x.Model).ToList(), tagService);
@@ -102,13 +108,13 @@ public partial class ImageGridView : UserControl
                 mainVm.ApplyTagFilter();
             }
         }
-        else if (sender is FrameworkElement fe && fe.DataContext is ImageItemViewModel vm)
+        else if (targetVm != null)
         {
-            var dialog = new TagEditDialog(vm.Model, tagService);
+            var dialog = new TagEditDialog(targetVm.Model, tagService);
             dialog.Owner = Window.GetWindow(this);
             if (dialog.ShowDialog() == true)
             {
-                vm.Model.Tags = (await tagService.GetTagsAsync(vm.Model.FilePath)).ToList();
+                targetVm.Model.Tags = (await tagService.GetTagsAsync(targetVm.Model.FilePath)).ToList();
                 await mainVm.RefreshTagFiltersAsync();
                 mainVm.ApplyTagFilter();
             }

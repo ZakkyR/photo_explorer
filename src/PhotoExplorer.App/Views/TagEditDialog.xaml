@@ -34,7 +34,7 @@
             </Grid.ColumnDefinitions>
             <TextBox x:Name="NewTagBox" Grid.Column="0" Margin="0,0,4,0"
                      KeyDown="NewTagBox_KeyDown"/>
-            <Button Grid.Column="1" Content="追加" Click="AddTag_Click" Padding="8,2"/>
+            <Button x:Name="AddButton" Grid.Column="1" Content="追加" Click="AddTag_Click" Padding="8,2"/>
         </Grid>
 
         <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right">

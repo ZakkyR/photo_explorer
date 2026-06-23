@@ -28,10 +28,19 @@ public partial class TagEditDialog : Window
     {
         var name = NewTagBox.Text.Trim();
         if (string.IsNullOrEmpty(name) || Tags.Contains(name)) return;
-        await _tagService.AddTagAsync(_item.FilePath, name);
-        Tags.Add(name);
-        NewTagBox.Clear();
-        _hasChanges = true;
+        AddButton.IsEnabled = false;
+        try
+        {
+            await _tagService.AddTagAsync(_item.FilePath, name);
+            Tags.Add(name);
+            NewTagBox.Clear();
+            _hasChanges = true;
+        }
+        finally
+        {
+            AddButton.IsEnabled = true;
+            NewTagBox.Focus();
+        }
     }
 
     private async void RemoveTag_Click(object sender, RoutedEventArgs e)

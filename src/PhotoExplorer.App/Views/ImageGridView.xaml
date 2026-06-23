@@ -15,11 +15,23 @@
                                 RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                             Height="{Binding DataContext.ThumbnailSize,
                                 RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                            BorderBrush="#CCCCCC" BorderThickness="1" Margin="4"
+                            Margin="4"
                             Background="#F5F5F5" Cursor="Hand"
                             PreviewMouseLeftButtonDown="Border_PreviewMouseLeftButtonDown"
                             PreviewMouseMove="Border_PreviewMouseMove"
                             MouseLeftButtonDown="Border_MouseLeftButtonDown">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Setter Property="BorderBrush" Value="#CCCCCC"/>
+                                <Setter Property="BorderThickness" Value="1"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                        <Setter Property="BorderBrush" Value="#0078D4"/>
+                                        <Setter Property="BorderThickness" Value="3"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
                         <Border.ContextMenu>
                             <ContextMenu>
                                 <MenuItem Header="タグを追加/編集..."

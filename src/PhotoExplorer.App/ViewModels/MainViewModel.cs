@@ -221,6 +221,8 @@ public partial class MainViewModel : ObservableObject
         catch { /* FileSystemWatcher callbacks must not crash the process */ }
     }
 
+    public bool HasMultipleSelected => FilteredImages.Count(x => x.IsSelected) > 1;
+
     partial void OnThumbnailSizeChanged(double value)
         => App.AppSettings.ThumbnailSize = value;
 }

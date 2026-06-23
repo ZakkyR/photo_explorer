@@ -12,6 +12,9 @@ public partial class ImageItemViewModel : ObservableObject
     [ObservableProperty]
     private BitmapSource? _thumbnail;
 
+    [ObservableProperty]
+    private bool _isSelected;
+
     public ImageItemViewModel(ImageItem model) => Model = model;
 
     public void SetThumbnailFromBytes(byte[]? bytes)

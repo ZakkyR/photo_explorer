@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using PhotoExplorer.App.ViewModels;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -9,6 +10,7 @@ namespace PhotoExplorer.App.Views;
 public partial class ImageGridView : UserControl
 {
     private Point _dragStartPoint;
+    private ImageItemViewModel? _dragSource;
 
     public ImageGridView() => InitializeComponent();
 
@@ -28,35 +30,79 @@ public partial class ImageGridView : UserControl
 
         if (sender is FrameworkElement fe && fe.DataContext is ImageItemViewModel vm)
         {
-            var data = new DataObject(DataFormats.FileDrop, new[] { vm.Model.FilePath });
+            var mainVm = Vm;
+            var selectedItems = mainVm.FilteredImages.Where(x => x.IsSelected).ToList();
+            string[] paths;
+            if (selectedItems.Count > 1)
+                paths = selectedItems.Select(x => x.Model.FilePath).ToArray();
+            else
+                paths = new[] { vm.Model.FilePath };
+
+            var data = new DataObject(DataFormats.FileDrop, paths);
             DragDrop.DoDragDrop(fe, data, DragDropEffects.Copy);
         }
     }
 
     private void Border_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (e.ClickCount < 2) return;
-        if (sender is FrameworkElement fe && fe.DataContext is ImageItemViewModel vm)
+        if (sender is not FrameworkElement fe || fe.DataContext is not ImageItemViewModel vm)
+            return;
+
+        var mainVm = Vm;
+        bool ctrl = Keyboard.IsKeyDown(Key.LeftCtrl) || Keyboard.IsKeyDown(Key.RightCtrl);
+
+        if (e.ClickCount >= 2 && !ctrl)
         {
-            var images = Vm.FilteredImages.Select(i => i.Model).ToList();
+            var images = mainVm.FilteredImages.Select(i => i.Model).ToList();
             var index = images.IndexOf(vm.Model);
             var preview = new PreviewWindow(images, index);
             preview.Owner = Window.GetWindow(this);
             preview.Show();
+            return;
         }
+
+        if (ctrl)
+        {
+            vm.IsSelected = !vm.IsSelected;
+        }
+        else
+        {
+            foreach (var item in mainVm.FilteredImages)
+                item.IsSelected = false;
+            vm.IsSelected = true;
+        }
+
+        _dragSource = vm;
+        e.Handled = false;
     }
 
     private async void TagMenuItem_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is FrameworkElement fe && fe.DataContext is ImageItemViewModel vm)
+        var mainVm = Vm;
+        var selected = mainVm.FilteredImages.Where(x => x.IsSelected).ToList();
+        var tagService = App.Services.GetRequiredService<PhotoExplorer.Core.Services.ITagService>();
+
+        if (selected.Count > 1)
         {
-            var tagService = App.Services.GetRequiredService<PhotoExplorer.Core.Services.ITagService>();
+            var dialog = new BulkTagEditDialog(selected.Select(x => x.Model).ToList(), tagService);
+            dialog.Owner = Window.GetWindow(this);
+            if (dialog.ShowDialog() == true)
+            {
+                foreach (var selVm in selected)
+                {
+                    selVm.Model.Tags = (await tagService.GetTagsAsync(selVm.Model.FilePath)).ToList();
+                }
+                mainVm.ApplyTagFilter();
+            }
+        }
+        else if (sender is FrameworkElement fe && fe.DataContext is ImageItemViewModel vm)
+        {
             var dialog = new TagEditDialog(vm.Model, tagService);
             dialog.Owner = Window.GetWindow(this);
             if (dialog.ShowDialog() == true)
             {
                 vm.Model.Tags = (await tagService.GetTagsAsync(vm.Model.FilePath)).ToList();
-                Vm.ApplyTagFilter();
+                mainVm.ApplyTagFilter();
             }
         }
     }

@@ -34,6 +34,11 @@
                     </TextBlock>
                 </StatusBarItem>
                 <Separator/>
+                <StatusBarItem>
+                    <TextBlock Text="{Binding SelectedFolderPath}"
+                               Foreground="Gray" FontSize="11"/>
+                </StatusBarItem>
+                <Separator/>
                 <StatusBarItem HorizontalAlignment="Right">
                     <StackPanel Orientation="Horizontal">
                         <TextBlock Text="サイズ:" VerticalAlignment="Center" Margin="0,0,4,0"/>

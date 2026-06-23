@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 
+
 namespace PhotoExplorer.App.Views;
 
 public partial class SidebarView : UserControl
@@ -15,8 +16,8 @@ public partial class SidebarView : UserControl
 
     private async void FolderItem_Click(object sender, MouseButtonEventArgs e)
     {
-        if (sender is FrameworkElement fe && fe.DataContext is string path)
-            await Vm.SelectFolderAsync(path);
+        if (sender is FrameworkElement fe && fe.DataContext is FolderInfo folderInfo)
+            await Vm.SelectFolderAsync(folderInfo.Path);
     }
 
     private async void AlbumItem_Click(object sender, MouseButtonEventArgs e)

@@ -1,3 +1,5 @@
+using PhotoExplorer.Core.Models;
+
 namespace PhotoExplorer.Core.Services;
 
 public class FolderChangedEventArgs : EventArgs
@@ -18,7 +20,9 @@ public interface IFolderService : IDisposable
 {
     Task RegisterFolderAsync(string path);
     Task UnregisterFolderAsync(string path);
-    Task<IReadOnlyList<string>> GetRegisteredFoldersAsync();
+    Task<IReadOnlyList<FolderInfo>> GetRegisteredFoldersAsync();
+    Task RenameFolderAsync(string folderPath, string displayName);
+    Task<string?> GetDisplayNameAsync(string folderPath);
     IEnumerable<string> GetImageFilesInFolder(string folderPath);
     event EventHandler<FolderChangedEventArgs>? FolderChanged;
 }

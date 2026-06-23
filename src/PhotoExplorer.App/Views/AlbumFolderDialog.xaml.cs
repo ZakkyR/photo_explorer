@@ -37,8 +37,8 @@ public partial class AlbumFolderDialog : Window
             AlbumFolders.Add(f);
         foreach (var f in registered)
         {
-            if (!_album.FolderPaths.Contains(f))
-                AvailableFolders.Add(f);
+            if (!_album.FolderPaths.Contains(f.Path))
+                AvailableFolders.Add(f.Path);
         }
     }
 

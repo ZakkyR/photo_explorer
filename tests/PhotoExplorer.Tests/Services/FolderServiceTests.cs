@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using PhotoExplorer.Core.Models;
 using PhotoExplorer.Core.Services;
 using PhotoExplorer.Data;
 
@@ -19,7 +20,7 @@ public class FolderServiceTests
         await svc.RegisterFolderAsync(@"C:\Photos\Test");
 
         var folders = await svc.GetRegisteredFoldersAsync();
-        Assert.Contains(@"C:\Photos\Test", folders);
+        Assert.Contains(folders, f => f.Path == @"C:\Photos\Test");
     }
 
     [Fact]

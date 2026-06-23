@@ -5,6 +5,7 @@ using PhotoExplorer.Core.Models;
 using PhotoExplorer.Core.Services;
 using System.Collections.ObjectModel;
 using System.Windows;
+using System.Windows.Input;
 
 namespace PhotoExplorer.App.ViewModels;
 
@@ -15,7 +16,7 @@ public partial class MainViewModel : ObservableObject
     private readonly IImageService _imageService;
     private readonly ITagService _tagService;
 
-    public ObservableCollection<string> Folders { get; } = new();
+    public ObservableCollection<FolderInfo> Folders { get; } = new();
     public ObservableCollection<Album> Albums { get; } = new();
     public ObservableCollection<ImageItemViewModel> AllImages { get; } = new();
     public ObservableCollection<ImageItemViewModel> FilteredImages { get; } = new();
@@ -32,6 +33,9 @@ public partial class MainViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _isLoading;
+
+    [ObservableProperty]
+    private string _selectedFolderPath = string.Empty;
 
     public MainViewModel(
         IFolderService folderService,
@@ -55,7 +59,7 @@ public partial class MainViewModel : ObservableObject
         var albums = await _albumService.GetAlbumsAsync();
         foreach (var a in albums) Albums.Add(a);
 
-        if (App.AppSettings.LastSelectedFolder is { } last && Folders.Contains(last))
+        if (App.AppSettings.LastSelectedFolder is { } last && Folders.Any(f => f.Path == last))
             await SelectFolderAsync(last);
     }
 
@@ -66,7 +70,7 @@ public partial class MainViewModel : ObservableObject
         if (dialog.ShowDialog() != true) return;
         var path = dialog.FolderName;
         await _folderService.RegisterFolderAsync(path);
-        if (!Folders.Contains(path)) Folders.Add(path);
+        if (!Folders.Any(f => f.Path == path)) Folders.Add(new FolderInfo(path, null));
         await SelectFolderAsync(path);
     }
 
@@ -74,8 +78,9 @@ public partial class MainViewModel : ObservableObject
     private async Task RemoveFolder(string path)
     {
         await _folderService.UnregisterFolderAsync(path);
-        Folders.Remove(path);
-        if (SelectedFolder == path) { AllImages.Clear(); FilteredImages.Clear(); SelectedFolder = null; }
+        var item = Folders.FirstOrDefault(f => f.Path == path);
+        if (item != null) Folders.Remove(item);
+        if (SelectedFolder == path) { AllImages.Clear(); FilteredImages.Clear(); SelectedFolder = null; SelectedFolderPath = string.Empty; }
     }
 
     [RelayCommand]
@@ -107,10 +112,30 @@ public partial class MainViewModel : ObservableObject
             await SelectAlbumAsync(updated);
     }
 
+    [RelayCommand]
+    private async Task RenameFolder(string folderPath)
+    {
+        var current = Folders.FirstOrDefault(f => f.Path == folderPath);
+        var currentName = current?.DisplayName ?? string.Empty;
+        var newName = Microsoft.VisualBasic.Interaction.InputBox(
+            "新しい表示名を入力してください（空欄でリセット）",
+            "名前を変更",
+            currentName);
+        if (newName == null) return; // cancelled
+        var displayName = string.IsNullOrWhiteSpace(newName) ? null : newName.Trim();
+        await _folderService.RenameFolderAsync(folderPath, displayName ?? string.Empty);
+
+        // Refresh the FolderInfo in the collection
+        var idx = Folders.IndexOf(current!);
+        if (idx >= 0)
+            Folders[idx] = new FolderInfo(folderPath, displayName);
+    }
+
     public async Task SelectFolderAsync(string path)
     {
         SelectedFolder = path;
         SelectedAlbum = null;
+        SelectedFolderPath = path;
         App.AppSettings.LastSelectedFolder = path;
         await LoadImagesAsync(await _imageService.LoadImagesFromFolderAsync(path, _tagService));
     }
@@ -119,6 +144,7 @@ public partial class MainViewModel : ObservableObject
     {
         SelectedAlbum = album;
         SelectedFolder = null;
+        SelectedFolderPath = string.Empty;
         await LoadImagesAsync(await _imageService.LoadImagesFromAlbumAsync(album, _tagService));
     }
 

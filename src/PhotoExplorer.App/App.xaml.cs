@@ -26,7 +26,7 @@ public partial class App : Application
             .UseSqlite($"Data Source={dbPath}")
             .Options;
         var dbContext = new AppDbContext(dbOptions);
-        dbContext.Database.EnsureCreated();
+        dbContext.Database.Migrate();
 
         var services = new ServiceCollection();
         services.AddSingleton(dbContext);

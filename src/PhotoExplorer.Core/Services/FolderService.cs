@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using PhotoExplorer.Core.Models;
 using PhotoExplorer.Data;
 using PhotoExplorer.Data.Entities;
 
@@ -41,8 +42,24 @@ public class FolderService : IFolderService
         StopWatcher(path);
     }
 
-    public async Task<IReadOnlyList<string>> GetRegisteredFoldersAsync()
-        => await _ctx.Folders.Select(f => f.Path).ToListAsync();
+    public async Task<IReadOnlyList<FolderInfo>> GetRegisteredFoldersAsync()
+        => await _ctx.Folders.Select(f => new FolderInfo(f.Path, f.DisplayName)).ToListAsync();
+
+    public async Task RenameFolderAsync(string folderPath, string displayName)
+    {
+        var entity = await _ctx.Folders.FirstOrDefaultAsync(f => f.Path == folderPath);
+        if (entity != null)
+        {
+            entity.DisplayName = string.IsNullOrWhiteSpace(displayName) ? null : displayName;
+            await _ctx.SaveChangesAsync();
+        }
+    }
+
+    public async Task<string?> GetDisplayNameAsync(string folderPath)
+    {
+        var entity = await _ctx.Folders.FirstOrDefaultAsync(f => f.Path == folderPath);
+        return entity?.DisplayName;
+    }
 
     public IEnumerable<string> GetImageFilesInFolder(string folderPath)
     {

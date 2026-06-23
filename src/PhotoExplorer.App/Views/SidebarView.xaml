@@ -18,14 +18,18 @@
                                     MouseLeftButtonDown="FolderItem_Click">
                                 <Border.ContextMenu>
                                     <ContextMenu>
-                                        <MenuItem Header="削除" CommandParameter="{Binding}"
+                                        <MenuItem Header="名前を変更" CommandParameter="{Binding Path}"
+                                                  Command="{Binding DataContext.RenameFolderCommand,
+                                                    RelativeSource={RelativeSource AncestorType=ItemsControl}}"/>
+                                        <Separator/>
+                                        <MenuItem Header="削除" CommandParameter="{Binding Path}"
                                                   Command="{Binding DataContext.RemoveFolderCommand,
                                                     RelativeSource={RelativeSource AncestorType=ItemsControl}}"/>
                                     </ContextMenu>
                                 </Border.ContextMenu>
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock Text="&#x1F4C1; " FontSize="14"/>
-                                    <TextBlock Text="{Binding Converter={StaticResource PathToNameConverter}}"
+                                    <TextBlock Text="{Binding DisplayLabel}"
                                                VerticalAlignment="Center"/>
                                 </StackPanel>
                             </Border>

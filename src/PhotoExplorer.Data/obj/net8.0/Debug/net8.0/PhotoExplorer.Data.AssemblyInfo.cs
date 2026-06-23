@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("PhotoExplorer.Data")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+85f8e13996d6b9985bf030042772e083e075a609")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+5d76b14db1fa5e48d838bd1e655ddcc096e890a3")]
 [assembly: System.Reflection.AssemblyProductAttribute("PhotoExplorer.Data")]
 [assembly: System.Reflection.AssemblyTitleAttribute("PhotoExplorer.Data")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

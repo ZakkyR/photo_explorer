@@ -1,3 +1,6 @@
+using MetadataExtractor.Formats.Iptc;
+using ImageMetadataReader = MetadataExtractor.ImageMetadataReader;
+using MdStringValue = MetadataExtractor.StringValue;
 using Microsoft.EntityFrameworkCore;
 using PhotoExplorer.Core.Models;
 using PhotoExplorer.Data;
@@ -61,18 +64,34 @@ public class TagService : ITagService
     private static bool IsIptcSupported(string filePath) =>
         IptcSupported.Contains(Path.GetExtension(filePath));
 
-    private static async Task<IReadOnlyList<Tag>> ReadIptcKeywordsAsync(string filePath)
+    private static Task<IReadOnlyList<Tag>> ReadIptcKeywordsAsync(string filePath)
     {
-        try
+        // MetadataExtractor はヘッダーのみ読むため ImageSharp より大幅に高速
+        return Task.Run<IReadOnlyList<Tag>>(() =>
         {
-            using var image = await Image.LoadAsync(filePath);
-            var iptc = image.Metadata.IptcProfile;
-            if (iptc == null) return Array.Empty<Tag>();
-            return iptc.GetValues(IptcTag.Keywords)
-                .Select(v => new Tag(v.Value))
-                .ToList();
-        }
-        catch { return Array.Empty<Tag>(); }
+            try
+            {
+                var directories = ImageMetadataReader.ReadMetadata(filePath);
+                var iptc = directories.OfType<IptcDirectory>().FirstOrDefault();
+                if (iptc == null) return Array.Empty<Tag>();
+
+                // 繰り返し可能な IPTC タグは StringValue[] として格納される
+                var raw = iptc.GetObject(IptcDirectory.TagKeywords);
+                IEnumerable<string> keywords = raw switch
+                {
+                    MdStringValue[] arr => arr.Select(sv => sv.ToString()),
+                    MdStringValue sv    => new[] { sv.ToString() },
+                    string[] arr        => arr,
+                    string s            => new[] { s },
+                    _                   => Array.Empty<string>()
+                };
+                return keywords
+                    .Where(k => !string.IsNullOrWhiteSpace(k))
+                    .Select(k => new Tag(k))
+                    .ToList();
+            }
+            catch { return Array.Empty<Tag>(); }
+        });
     }
 
     private static async Task<bool> WriteIptcKeywordAsync(string filePath, string tagName, bool add)

@@ -1,4 +1,5 @@
 using System.IO;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using PhotoExplorer.Core.Services;
@@ -25,6 +26,33 @@ public partial class App : Application
         var dbOptions = new DbContextOptionsBuilder<AppDbContext>()
             .UseSqlite($"Data Source={dbPath}")
             .Options;
+        // DBがEnsureCreated()で作成された場合、InitialCreateを適用済みとしてマークする
+        // テーブル存在チェックではなく、レコード存在チェックで判断する
+        if (File.Exists(dbPath))
+        {
+            using var rawConn = new SqliteConnection($"Data Source={dbPath}");
+            rawConn.Open();
+            bool initialCreateApplied;
+            using (var checkCmd = rawConn.CreateCommand())
+            {
+                try
+                {
+                    checkCmd.CommandText = "SELECT count(*) FROM \"__EFMigrationsHistory\" WHERE \"MigrationId\" = '20260623060418_InitialCreate'";
+                    initialCreateApplied = (long)checkCmd.ExecuteScalar()! > 0;
+                }
+                catch { initialCreateApplied = false; }
+            }
+            if (!initialCreateApplied)
+            {
+                using var createCmd = rawConn.CreateCommand();
+                createCmd.CommandText = "CREATE TABLE IF NOT EXISTS \"__EFMigrationsHistory\" (\"MigrationId\" TEXT NOT NULL CONSTRAINT \"PK___EFMigrationsHistory\" PRIMARY KEY, \"ProductVersion\" TEXT NOT NULL)";
+                createCmd.ExecuteNonQuery();
+                using var insertCmd = rawConn.CreateCommand();
+                insertCmd.CommandText = "INSERT OR IGNORE INTO \"__EFMigrationsHistory\" VALUES ('20260623060418_InitialCreate', '8.0.0')";
+                insertCmd.ExecuteNonQuery();
+            }
+        }
+
         var dbContext = new AppDbContext(dbOptions);
         dbContext.Database.Migrate();
 

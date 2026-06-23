@@ -1,13 +1,52 @@
 using PhotoExplorer.Core.Models;
 using PhotoExplorer.Core.Services;
+using System.Collections.ObjectModel;
+using System.Windows;
+using System.Windows.Input;
 
 namespace PhotoExplorer.App.Views;
 
-// Stub: implemented in Task 10
-public partial class TagEditDialog : System.Windows.Window
+public partial class TagEditDialog : Window
 {
-    public TagEditDialog(ImageItem model, ITagService tagService)
+    private readonly ImageItem _item;
+    private readonly ITagService _tagService;
+
+    public string FileName => _item.FileName;
+    public ObservableCollection<string> Tags { get; } = new();
+
+    public TagEditDialog(ImageItem item, ITagService tagService)
     {
+        _item = item;
+        _tagService = tagService;
+        DataContext = this;
         InitializeComponent();
+        foreach (var t in item.Tags) Tags.Add(t.Name);
     }
+
+    private async void AddTag_Click(object sender, RoutedEventArgs e)
+    {
+        var name = NewTagBox.Text.Trim();
+        if (string.IsNullOrEmpty(name) || Tags.Contains(name)) return;
+        await _tagService.AddTagAsync(_item.FilePath, name);
+        Tags.Add(name);
+        NewTagBox.Clear();
+        DialogResult = true;
+    }
+
+    private async void RemoveTag_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement fe && fe.Tag is string tagName)
+        {
+            await _tagService.RemoveTagAsync(_item.FilePath, tagName);
+            Tags.Remove(tagName);
+            DialogResult = true;
+        }
+    }
+
+    private void NewTagBox_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter) AddTag_Click(sender, e);
+    }
+
+    private void Close_Click(object sender, RoutedEventArgs e) => Close();
 }

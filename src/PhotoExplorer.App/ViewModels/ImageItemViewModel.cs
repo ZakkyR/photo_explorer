@@ -51,7 +51,7 @@ public partial class ImageItemViewModel : ObservableObject
                 bitmap.CacheOption = BitmapCacheOption.OnLoad;
                 bitmap.EndInit();
                 bitmap.Freeze();
-                Application.Current.Dispatcher.Invoke(() => FullImage = bitmap);
+                Application.Current.Dispatcher.BeginInvoke(() => FullImage = bitmap);
             }
             catch
             {

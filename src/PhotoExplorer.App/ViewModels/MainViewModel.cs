@@ -3,6 +3,8 @@ using CommunityToolkit.Mvvm.Input;
 using Microsoft.Win32;
 using PhotoExplorer.Core.Models;
 using PhotoExplorer.Core.Services;
+using SixLabors.ImageSharp.Formats.Jpeg;
+using SixLabors.ImageSharp.Processing;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Security.Cryptography;
@@ -129,7 +131,6 @@ public partial class MainViewModel : ObservableObject
         var displayName = string.IsNullOrWhiteSpace(newName) ? null : newName.Trim();
         await _folderService.RenameFolderAsync(folderPath, displayName ?? string.Empty);
 
-        // Refresh the FolderInfo in the collection
         var idx = Folders.IndexOf(current!);
         if (idx >= 0)
             Folders[idx] = new FolderInfo(folderPath, displayName);
@@ -141,13 +142,7 @@ public partial class MainViewModel : ObservableObject
         SelectedAlbum = null;
         SelectedFolderPath = path;
         App.AppSettings.LastSelectedFolder = path;
-
-        var sw = System.Diagnostics.Stopwatch.StartNew();
-        var items = await _imageService.LoadImagesFromFolderAsync(path, _tagService);
-        PerfLog($"[PERF] LoadImagesFromFolder: {sw.ElapsedMilliseconds}ms ({items.Count} files)");
-        sw.Restart();
-        await LoadImagesAsync(items);
-        PerfLog($"[PERF] LoadImagesAsync (setup): {sw.ElapsedMilliseconds}ms");
+        await LoadImagesAsync(await _imageService.LoadImagesFromFolderAsync(path, _tagService));
     }
 
     public async Task SelectAlbumAsync(Album album)
@@ -171,31 +166,38 @@ public partial class MainViewModel : ObservableObject
         await RefreshTagFiltersAsync();
         ApplyTagFilter();
 
-        // サムネイルを並列生成（WIC + ディスクキャッシュ）
         Directory.CreateDirectory(ThumbnailCacheDir);
         _ = Task.Run(async () =>
         {
-            var swThumb = System.Diagnostics.Stopwatch.StartNew();
-            int cached = 0, generated = 0;
+            // スレッドプールで生ピクセル配列のみ生成し、UI スレッドで WriteableBitmap を作成する。
+            // WriteableBitmap は BackBuffer ポインタで描画されるため CachedBitmap(IWICBitmap/STA) と違い
+            // コンポジションスレッドからの COM マーシャリングが発生せずプレビュー表示がブロックされない。
+            var pixelData = new (byte[]? pixels, int width, int height)[vms.Count];
             try
             {
-                await Parallel.ForEachAsync(vms,
-                    new ParallelOptions { MaxDegreeOfParallelism = 4 },
-                    (vm, _) =>
-                    {
-                        bool fromCache = File.Exists(GetCachePath(vm.Model.FilePath));
-                        var thumbnail = LoadThumbnailFast(vm.Model.FilePath);
-                        if (fromCache) Interlocked.Increment(ref cached);
-                        else Interlocked.Increment(ref generated);
-                        if (thumbnail != null)
-                            Application.Current.Dispatcher.BeginInvoke(() => vm.Thumbnail = thumbnail);
-                        return ValueTask.CompletedTask;
-                    });
+                await Task.WhenAll(vms.Select((vm, i) => Task.Run(() =>
+                {
+                    pixelData[i] = LoadThumbnailPixels(vm.Model.FilePath);
+                })));
             }
             finally
             {
-                PerfLog($"[PERF] Thumbnails: {swThumb.ElapsedMilliseconds}ms (cache={cached}, generated={generated})");
-                Application.Current.Dispatcher.Invoke(() => IsLoading = false);
+                _ = Application.Current.Dispatcher.BeginInvoke(
+                    System.Windows.Threading.DispatcherPriority.Background,
+                    new Action(() =>
+                    {
+                        for (int i = 0; i < vms.Count; i++)
+                        {
+                            var (pixels, w, h) = pixelData[i];
+                            if (pixels != null)
+                            {
+                                var wb = new WriteableBitmap(w, h, 96, 96, System.Windows.Media.PixelFormats.Bgra32, null);
+                                wb.WritePixels(new System.Windows.Int32Rect(0, 0, w, h), pixels, w * 4, 0);
+                                vms[i].Thumbnail = wb;
+                            }
+                        }
+                        IsLoading = false;
+                    }));
             }
         });
 
@@ -270,51 +272,34 @@ public partial class MainViewModel : ObservableObject
         return Path.Combine(ThumbnailCacheDir, $"{key}_{lastWrite:x}.jpg");
     }
 
-    private static BitmapSource? LoadThumbnailFast(string filePath)
+    private static (byte[]? pixels, int width, int height) LoadThumbnailPixels(string filePath)
     {
-        // UriSource はバックグラウンドスレッドから呼ぶと COM STA マーシャリングで極端に遅くなる。
-        // StreamSource 経由で FileStream を渡すことで回避する。
         try
         {
             var cachePath = GetCachePath(filePath);
-            bool hasCache = File.Exists(cachePath);
-            string source = hasCache ? cachePath : filePath;
+            if (!File.Exists(cachePath))
+            {
+                using (var img = SixLabors.ImageSharp.Image.Load(filePath))
+                {
+                    img.Mutate(x => x.Resize(new ResizeOptions
+                    {
+                        Size = new SixLabors.ImageSharp.Size(CacheThumbnailSize, CacheThumbnailSize),
+                        Mode = SixLabors.ImageSharp.Processing.ResizeMode.Max
+                    }));
+                    using var ms = new MemoryStream();
+                    img.Save(ms, new JpegEncoder { Quality = 85 });
+                    ms.Position = 0;
+                    using var fs = new FileStream(cachePath, FileMode.Create);
+                    ms.CopyTo(fs);
+                }
+            }
 
-            using var stream = new FileStream(source, FileMode.Open, FileAccess.Read, FileShare.Read);
-            var bmp = new BitmapImage();
-            bmp.BeginInit();
-            bmp.StreamSource = stream;
-            bmp.CacheOption = BitmapCacheOption.OnLoad;
-            if (!hasCache)
-                bmp.DecodePixelWidth = CacheThumbnailSize;
-            bmp.EndInit();
-            bmp.Freeze();
-
-            if (!hasCache)
-                SaveCache(cachePath, bmp);
-
-            return bmp;
+            using var cached = SixLabors.ImageSharp.Image.Load<SixLabors.ImageSharp.PixelFormats.Bgra32>(cachePath);
+            var pixels = new byte[cached.Width * cached.Height * 4];
+            cached.CopyPixelDataTo(pixels);
+            return (pixels, cached.Width, cached.Height);
         }
-        catch { return null; }
-    }
-
-    private static readonly string PerfLogPath = Path.Combine(Path.GetTempPath(), "photo_explorer_perf.txt");
-    private static void PerfLog(string msg)
-    {
-        var line = $"[{DateTime.Now:HH:mm:ss.fff}] {msg}";
-        File.AppendAllText(PerfLogPath, line + Environment.NewLine);
-    }
-
-    private static void SaveCache(string cachePath, BitmapSource bmp)
-    {
-        try
-        {
-            var encoder = new JpegBitmapEncoder { QualityLevel = 85 };
-            encoder.Frames.Add(BitmapFrame.Create(bmp));
-            using var fs = new FileStream(cachePath, FileMode.Create);
-            encoder.Save(fs);
-        }
-        catch { }
+        catch { return (null, 0, 0); }
     }
 
     partial void OnThumbnailSizeChanged(double value)

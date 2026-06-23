@@ -26,15 +26,19 @@
                     Foreground="White" FontSize="16"/>
         </StackPanel>
 
-        <!-- 画像表示 / 読込失敗時はグレー枠 + テキスト -->
+        <!-- 画像表示 / 読込中 / 読込失敗 -->
         <Grid Grid.Row="1" Margin="8">
             <Image Source="{Binding CurrentImage}" Stretch="Uniform"/>
             <Border Background="#3A3A3A" BorderBrush="#666666" BorderThickness="2"
-                    Visibility="{Binding CurrentImage, Converter={StaticResource NullToVisibilityConverter}}">
+                    Visibility="{Binding ShowErrorOverlay, Converter={StaticResource BoolToVisibilityConverter}}">
                 <TextBlock Text="画像を読み込めませんでした" Foreground="#AAAAAA"
                            HorizontalAlignment="Center" VerticalAlignment="Center"
                            FontSize="16"/>
             </Border>
+            <TextBlock Text="読み込み中..." Foreground="#CCCCCC"
+                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                       FontSize="16"
+                       Visibility="{Binding IsLoading, Converter={StaticResource BoolToVisibilityConverter}}"/>
         </Grid>
 
         <!-- タグ表示 + タグ追加ボタン -->

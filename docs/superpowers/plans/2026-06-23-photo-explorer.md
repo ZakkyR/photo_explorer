@@ -88,7 +88,7 @@ photo_explorer/
 - [ ] **Step 1: ソリューションと各プロジェクトを作成する**
 
 ```powershell
-cd C:\Users\Zakky\source\repos\photo_explorer
+cd <repo_root>
 
 dotnet new sln -n PhotoExplorer
 dotnet new wpf -n PhotoExplorer.App -o src/PhotoExplorer.App --framework net8.0-windows

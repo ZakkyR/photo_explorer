@@ -429,3 +429,11 @@ FodyWeavers.xsd
 *.msp
 # SDD workspace
 .superpowers/
+
+# Build output (ネストされたパスも確実に除外)
+**/bin/
+**/obj/
+
+# Build logs (ローカルパスを含む)
+*.log
+build.log

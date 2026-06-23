@@ -5,38 +5,41 @@ using Microsoft.EntityFrameworkCore;
 using PhotoExplorer.Core.Models;
 using PhotoExplorer.Data;
 using PhotoExplorer.Data.Entities;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Metadata.Profiles.Iptc;
 
 namespace PhotoExplorer.Core.Services;
 
 public class TagService : ITagService
 {
-    private static readonly HashSet<string> IptcSupported =
+    private static readonly HashSet<string> IptcReadSupported =
         new(StringComparer.OrdinalIgnoreCase) { ".jpg", ".jpeg", ".png" };
 
     private readonly AppDbContext _ctx;
 
     public TagService(AppDbContext ctx) => _ctx = ctx;
 
+    // IPTC（読み取り専用）と SQLite（読み書き）をマージして返す。
+    // JPEG 全体再エンコードが必要な IPTC 書き込みは行わず、SQLite を正とする。
     public async Task<IReadOnlyList<Tag>> GetTagsAsync(string filePath)
     {
-        if (IsIptcSupported(filePath))
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        if (IptcReadSupported.Contains(Path.GetExtension(filePath)))
         {
-            var iptcTags = await ReadIptcKeywordsAsync(filePath);
-            if (iptcTags.Count > 0) return iptcTags;
+            var iptc = await ReadIptcKeywordsAsync(filePath);
+            foreach (var t in iptc) names.Add(t.Name);
         }
-        return await _ctx.ImageTags
+
+        var dbTags = await _ctx.ImageTags
             .Where(t => t.FilePath == filePath)
-            .Select(t => new Tag(t.TagName))
+            .Select(t => t.TagName)
             .ToListAsync();
+        foreach (var t in dbTags) names.Add(t);
+
+        return names.OrderBy(n => n).Select(n => new Tag(n)).ToList();
     }
 
     public async Task AddTagAsync(string filePath, string tagName)
     {
-        if (IsIptcSupported(filePath) && await WriteIptcKeywordAsync(filePath, tagName, add: true))
-            return;
-
         if (!await _ctx.ImageTags.AnyAsync(t => t.FilePath == filePath && t.TagName == tagName))
         {
             _ctx.ImageTags.Add(new ImageTagEntity { FilePath = filePath, TagName = tagName });
@@ -46,9 +49,6 @@ public class TagService : ITagService
 
     public async Task RemoveTagAsync(string filePath, string tagName)
     {
-        if (IsIptcSupported(filePath) && await WriteIptcKeywordAsync(filePath, tagName, add: false))
-            return;
-
         var entity = await _ctx.ImageTags
             .FirstOrDefaultAsync(t => t.FilePath == filePath && t.TagName == tagName);
         if (entity != null)
@@ -61,12 +61,8 @@ public class TagService : ITagService
     public async Task<IReadOnlyList<string>> GetAllTagNamesAsync()
         => await _ctx.ImageTags.Select(t => t.TagName).Distinct().ToListAsync();
 
-    private static bool IsIptcSupported(string filePath) =>
-        IptcSupported.Contains(Path.GetExtension(filePath));
-
     private static Task<IReadOnlyList<Tag>> ReadIptcKeywordsAsync(string filePath)
     {
-        // MetadataExtractor はヘッダーのみ読むため ImageSharp より大幅に高速
         return Task.Run<IReadOnlyList<Tag>>(() =>
         {
             try
@@ -75,7 +71,6 @@ public class TagService : ITagService
                 var iptc = directories.OfType<IptcDirectory>().FirstOrDefault();
                 if (iptc == null) return Array.Empty<Tag>();
 
-                // 繰り返し可能な IPTC タグは StringValue[] として格納される
                 var raw = iptc.GetObject(IptcDirectory.TagKeywords);
                 IEnumerable<string> keywords = raw switch
                 {
@@ -92,27 +87,5 @@ public class TagService : ITagService
             }
             catch { return Array.Empty<Tag>(); }
         });
-    }
-
-    private static async Task<bool> WriteIptcKeywordAsync(string filePath, string tagName, bool add)
-    {
-        try
-        {
-            using var image = await Image.LoadAsync(filePath);
-            var iptc = image.Metadata.IptcProfile ?? new IptcProfile();
-            var existing = iptc.GetValues(IptcTag.Keywords)
-                .Select(v => v.Value)
-                .ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-            if (add) existing.Add(tagName);
-            else existing.Remove(tagName);
-
-            iptc.RemoveValue(IptcTag.Keywords);
-            foreach (var kw in existing) iptc.SetValue(IptcTag.Keywords, kw, strict: false);
-            image.Metadata.IptcProfile = iptc;
-            await image.SaveAsync(filePath);
-            return true;
-        }
-        catch { return false; }
     }
 }

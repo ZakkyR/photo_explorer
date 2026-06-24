@@ -20,7 +20,7 @@ public class TagService : ITagService
     {
         var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        if (IptcReadSupported.Contains(Path.GetExtension(filePath)))
+        if (IptcReadSupported.Contains(Path.GetExtension(filePath)) && !IsCloudFile(filePath))
         {
             var iptc = await ReadIptcKeywordsAsync(filePath);
             foreach (var t in iptc) names.Add(t.Name);
@@ -75,9 +75,9 @@ public class TagService : ITagService
             _ctx.Database.CloseConnection();
         }
 
-        // IPTC: Task.WhenAll で並列読み取り
+        // IPTC: Task.WhenAll で並列読み取り（クラウド専用ファイルはスキップ）
         var iptcFiles = filePaths
-            .Where(f => IptcReadSupported.Contains(Path.GetExtension(f)))
+            .Where(f => IptcReadSupported.Contains(Path.GetExtension(f)) && !IsCloudFile(f))
             .ToList();
 
         if (iptcFiles.Count > 0)
@@ -146,6 +146,18 @@ public class TagService : ITagService
 
     public async Task<IReadOnlyList<string>> GetAllTagNamesAsync()
         => await _ctx.ImageTags.Select(t => t.TagName).Distinct().ToListAsync();
+
+    // OneDrive Files On-Demand などクラウド専用ファイルを判定
+    // FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS (0x400000): アクセス時にダウンロードが発生するファイル
+    private static bool IsCloudFile(string filePath)
+    {
+        try
+        {
+            const FileAttributes cloudMask = (FileAttributes)0x400000;
+            return (File.GetAttributes(filePath) & cloudMask) != 0;
+        }
+        catch { return false; }
+    }
 
     private static Task<IReadOnlyList<Tag>> ReadIptcKeywordsAsync(string filePath)
     {

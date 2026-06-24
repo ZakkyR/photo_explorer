@@ -243,16 +243,75 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
-    private async void OnFolderChanged(object? sender, FolderChangedEventArgs e)
+    private void OnFolderChanged(object? sender, FolderChangedEventArgs e)
     {
-        try
+        if (SelectedFolder != e.FolderPath &&
+            SelectedAlbum?.FolderPaths.Contains(e.FolderPath) != true) return;
+
+        // FSW は ThreadPool スレッドで発火するため UI スレッドへディスパッチ
+        Application.Current.Dispatcher.BeginInvoke(new Action(async () =>
         {
-            if (SelectedFolder == e.FolderPath)
-                await SelectFolderAsync(e.FolderPath);
-            else if (SelectedAlbum?.FolderPaths.Contains(e.FolderPath) == true)
-                await SelectAlbumAsync(SelectedAlbum);
-        }
-        catch { /* FileSystemWatcher callbacks must not crash the process */ }
+            try
+            {
+                switch (e.ChangeType)
+                {
+                    case WatcherChangeTypes.Created:
+                        await AddImageAsync(e.FilePath);
+                        break;
+                    case WatcherChangeTypes.Deleted:
+                        RemoveImage(e.FilePath);
+                        break;
+                    case WatcherChangeTypes.Renamed:
+                        if (e.OldFilePath != null) RemoveImage(e.OldFilePath);
+                        await AddImageAsync(e.FilePath);
+                        break;
+                }
+            }
+            catch { }
+        }));
+    }
+
+    private async Task AddImageAsync(string filePath)
+    {
+        var tagsBulk = await _tagService.GetTagsBulkAsync(new List<string> { filePath });
+        var item = new ImageItem(filePath)
+        {
+            Tags = tagsBulk.TryGetValue(filePath, out var t) ? t : new List<Tag>()
+        };
+        var vm = new ImageItemViewModel(item);
+        AllImages.Add(vm);
+
+        Directory.CreateDirectory(ThumbnailCacheDir);
+        _ = Task.Run(() =>
+        {
+            var (pixels, width, height) = LoadThumbnailPixels(filePath);
+            if (pixels != null)
+            {
+                Application.Current.Dispatcher.BeginInvoke(
+                    System.Windows.Threading.DispatcherPriority.Background,
+                    new Action(() =>
+                    {
+                        var wb = new WriteableBitmap(width, height, 96, 96,
+                            System.Windows.Media.PixelFormats.Bgra32, null);
+                        wb.WritePixels(new System.Windows.Int32Rect(0, 0, width, height),
+                            pixels, width * 4, 0);
+                        vm.Thumbnail = wb;
+                    }));
+            }
+        });
+
+        await RefreshTagFiltersAsync();
+        ApplyTagFilter();
+    }
+
+    private void RemoveImage(string filePath)
+    {
+        var vm = AllImages.FirstOrDefault(v =>
+            string.Equals(v.Model.FilePath, filePath, StringComparison.OrdinalIgnoreCase));
+        if (vm == null) return;
+        AllImages.Remove(vm);
+        FilteredImages.Remove(vm);
+        _ = RefreshTagFiltersAsync();
     }
 
     public bool HasMultipleSelected => FilteredImages.Count(x => x.IsSelected) > 1;

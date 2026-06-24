@@ -12,6 +12,7 @@ public partial class BulkTagEditDialog : Window
 {
     private readonly IReadOnlyList<ImageItem> _items;
     private readonly ITagService _tagService;
+    private bool _hasChanges;
 
     public ObservableCollection<string> CommonTags { get; } = new();
 
@@ -44,45 +45,60 @@ public partial class BulkTagEditDialog : Window
     {
         var name = NewTagBox.Text.Trim();
         if (string.IsNullOrEmpty(name)) return;
-
-        foreach (var item in _items)
+        AddButton.IsEnabled = false;
+        try
         {
-            if (!item.Tags.Any(t => t.Name == name))
-                await _tagService.AddTagAsync(item.FilePath, name);
+            var targets = _items
+                .Where(item => !item.Tags.Any(t => t.Name == name))
+                .Select(item => item.FilePath)
+                .ToList();
+            await _tagService.AddTagBulkAsync(targets, name);
+
+            // DB 書き込み後はメモリ内リストを直接更新（ファイル再読み不要）
+            var newTag = new Tag(name);
+            foreach (var item in _items)
+                if (!item.Tags.Any(t => t.Name == name))
+                    item.Tags = item.Tags.Append(newTag).OrderBy(t => t.Name).ToList();
+
+            NewTagBox.Clear();
+            RefreshCommonTags();
+            _hasChanges = true;
         }
-
-        // Refresh model tags
-        foreach (var item in _items)
-            item.Tags = (await _tagService.GetTagsAsync(item.FilePath)).ToList();
-
-        NewTagBox.Clear();
-        RefreshCommonTags();
-        DialogResult = true;
+        finally
+        {
+            AddButton.IsEnabled = true;
+            NewTagBox.Focus();
+        }
     }
 
     private async void RemoveCommonTag_Click(object sender, RoutedEventArgs e)
     {
         if (sender is FrameworkElement fe && fe.Tag is string tagName)
         {
-            foreach (var item in _items)
-            {
-                if (item.Tags.Any(t => t.Name == tagName))
-                    await _tagService.RemoveTagAsync(item.FilePath, tagName);
-            }
+            var targets = _items
+                .Where(item => item.Tags.Any(t => t.Name == tagName))
+                .Select(item => item.FilePath)
+                .ToList();
+            await _tagService.RemoveTagBulkAsync(targets, tagName);
 
-            // Refresh model tags
+            // DB 削除後はメモリ内リストを直接更新（ファイル再読み不要）
             foreach (var item in _items)
-                item.Tags = (await _tagService.GetTagsAsync(item.FilePath)).ToList();
+                item.Tags = item.Tags.Where(t => t.Name != tagName).ToList();
 
             RefreshCommonTags();
-            DialogResult = true;
+            _hasChanges = true;
         }
     }
 
     private void NewTagBox_KeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key == Key.Enter) AddTag_Click(sender, e);
+        if (e.Key != Key.Enter) return;
+        e.Handled = true;
+        AddTag_Click(sender, e);
     }
 
-    private void Done_Click(object sender, RoutedEventArgs e) => Close();
+    private void Done_Click(object sender, RoutedEventArgs e)
+    {
+        DialogResult = _hasChanges;
+    }
 }

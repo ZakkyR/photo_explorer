@@ -78,7 +78,7 @@ public class FolderService : IFolderService
         };
         watcher.Created += (_, e) => Raise(path, e.FullPath, WatcherChangeTypes.Created);
         watcher.Deleted += (_, e) => Raise(path, e.FullPath, WatcherChangeTypes.Deleted);
-        watcher.Renamed += (_, e) => Raise(path, e.FullPath, WatcherChangeTypes.Renamed);
+        watcher.Renamed += (_, e) => Raise(path, e.FullPath, WatcherChangeTypes.Renamed, e.OldFullPath);
         _watchers[path] = watcher;
     }
 
@@ -87,10 +87,10 @@ public class FolderService : IFolderService
         if (_watchers.TryGetValue(path, out var w)) { w.Dispose(); _watchers.Remove(path); }
     }
 
-    private void Raise(string folderPath, string filePath, WatcherChangeTypes type)
+    private void Raise(string folderPath, string filePath, WatcherChangeTypes type, string? oldFilePath = null)
     {
         if (SupportedExtensions.Contains(Path.GetExtension(filePath)))
-            FolderChanged?.Invoke(this, new FolderChangedEventArgs(folderPath, filePath, type));
+            FolderChanged?.Invoke(this, new FolderChangedEventArgs(folderPath, filePath, type, oldFilePath));
     }
 
     public void Dispose()

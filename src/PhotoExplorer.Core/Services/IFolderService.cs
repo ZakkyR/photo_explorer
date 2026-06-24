@@ -6,13 +6,15 @@ public class FolderChangedEventArgs : EventArgs
 {
     public string FolderPath { get; }
     public string FilePath { get; }
+    public string? OldFilePath { get; }
     public WatcherChangeTypes ChangeType { get; }
 
-    public FolderChangedEventArgs(string folderPath, string filePath, WatcherChangeTypes changeType)
+    public FolderChangedEventArgs(string folderPath, string filePath, WatcherChangeTypes changeType, string? oldFilePath = null)
     {
         FolderPath = folderPath;
         FilePath = filePath;
         ChangeType = changeType;
+        OldFilePath = oldFilePath;
     }
 }
 

@@ -10,6 +10,7 @@ public partial class TagEditDialog : Window
 {
     private readonly ImageItem _item;
     private readonly ITagService _tagService;
+    private bool _hasChanges;
 
     public string FileName => _item.FileName;
     public ObservableCollection<string> Tags { get; } = new();
@@ -27,10 +28,19 @@ public partial class TagEditDialog : Window
     {
         var name = NewTagBox.Text.Trim();
         if (string.IsNullOrEmpty(name) || Tags.Contains(name)) return;
-        await _tagService.AddTagAsync(_item.FilePath, name);
-        Tags.Add(name);
-        NewTagBox.Clear();
-        DialogResult = true;
+        AddButton.IsEnabled = false;
+        try
+        {
+            await _tagService.AddTagAsync(_item.FilePath, name);
+            Tags.Add(name);
+            NewTagBox.Clear();
+            _hasChanges = true;
+        }
+        finally
+        {
+            AddButton.IsEnabled = true;
+            NewTagBox.Focus();
+        }
     }
 
     private async void RemoveTag_Click(object sender, RoutedEventArgs e)
@@ -39,14 +49,19 @@ public partial class TagEditDialog : Window
         {
             await _tagService.RemoveTagAsync(_item.FilePath, tagName);
             Tags.Remove(tagName);
-            DialogResult = true;
+            _hasChanges = true;
         }
     }
 
     private void NewTagBox_KeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key == Key.Enter) AddTag_Click(sender, e);
+        if (e.Key != Key.Enter) return;
+        e.Handled = true;
+        AddTag_Click(sender, e);
     }
 
-    private void Close_Click(object sender, RoutedEventArgs e) => Close();
+    private void Close_Click(object sender, RoutedEventArgs e)
+    {
+        DialogResult = _hasChanges;
+    }
 }

@@ -4,15 +4,12 @@ using MdStringValue = MetadataExtractor.StringValue;
 using Microsoft.EntityFrameworkCore;
 using PhotoExplorer.Core.Models;
 using PhotoExplorer.Data;
-using PhotoExplorer.Data.Entities;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Metadata.Profiles.Iptc;
 
 namespace PhotoExplorer.Core.Services;
 
 public class TagService : ITagService
 {
-    private static readonly HashSet<string> IptcSupported =
+    private static readonly HashSet<string> IptcReadSupported =
         new(StringComparer.OrdinalIgnoreCase) { ".jpg", ".jpeg", ".png" };
 
     private readonly AppDbContext _ctx;
@@ -21,52 +18,149 @@ public class TagService : ITagService
 
     public async Task<IReadOnlyList<Tag>> GetTagsAsync(string filePath)
     {
-        if (IsIptcSupported(filePath))
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        if (IptcReadSupported.Contains(Path.GetExtension(filePath)) && !IsCloudFile(filePath))
         {
-            var iptcTags = await ReadIptcKeywordsAsync(filePath);
-            if (iptcTags.Count > 0) return iptcTags;
+            var iptc = await ReadIptcKeywordsAsync(filePath);
+            foreach (var t in iptc) names.Add(t.Name);
         }
-        return await _ctx.ImageTags
+
+        var dbTags = await _ctx.ImageTags
             .Where(t => t.FilePath == filePath)
-            .Select(t => new Tag(t.TagName))
+            .Select(t => t.TagName)
             .ToListAsync();
+        foreach (var t in dbTags) names.Add(t);
+
+        return names.OrderBy(n => n).Select(n => new Tag(n)).ToList();
     }
 
+    // フォルダ読み込み用: ADO.NET 直接 SQL + IPTC 並列読み
+    // EF Core の LINQ Contains クエリは初回コンパイルが極端に遅いため ADO.NET を使う
+    public async Task<Dictionary<string, List<Tag>>> GetTagsBulkAsync(IReadOnlyList<string> filePaths)
+    {
+        var result = filePaths.ToDictionary(
+            f => f,
+            _ => new List<Tag>(),
+            StringComparer.OrdinalIgnoreCase);
+
+        if (filePaths.Count == 0) return result;
+
+        // SQLite: ADO.NET で直接クエリ（EF Core LINQ コンパイルを回避）
+        var conn = _ctx.Database.GetDbConnection();
+        await _ctx.Database.OpenConnectionAsync();
+        try
+        {
+            using var cmd = conn.CreateCommand();
+            var placeholders = string.Join(",", filePaths.Select((_, i) => $"@p{i}"));
+            cmd.CommandText = $"SELECT FilePath, TagName FROM ImageTags WHERE FilePath IN ({placeholders})";
+            for (int i = 0; i < filePaths.Count; i++)
+            {
+                var p = cmd.CreateParameter();
+                p.ParameterName = $"@p{i}";
+                p.Value = filePaths[i];
+                cmd.Parameters.Add(p);
+            }
+            using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var fp = reader.GetString(0);
+                var tagName = reader.GetString(1);
+                if (result.TryGetValue(fp, out var list))
+                    list.Add(new Tag(tagName));
+            }
+        }
+        finally
+        {
+            _ctx.Database.CloseConnection();
+        }
+
+        // IPTC: Task.WhenAll で並列読み取り（クラウド専用ファイルはスキップ）
+        var iptcFiles = filePaths
+            .Where(f => IptcReadSupported.Contains(Path.GetExtension(f)) && !IsCloudFile(f))
+            .ToList();
+
+        if (iptcFiles.Count > 0)
+        {
+            var iptcAll = await Task.WhenAll(
+                iptcFiles.Select(async f => (f, tags: await ReadIptcKeywordsAsync(f))));
+
+            foreach (var (file, tags) in iptcAll)
+            {
+                if (!result.TryGetValue(file, out var list)) continue;
+                var existing = list.Select(t => t.Name)
+                                   .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                foreach (var t in tags)
+                    if (existing.Add(t.Name))
+                        list.Add(t);
+            }
+        }
+
+        foreach (var list in result.Values)
+            list.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase));
+
+        return result;
+    }
+
+    // LINQ コンパイルを避けるため生 SQL を使用（初回から即時完了）
     public async Task AddTagAsync(string filePath, string tagName)
     {
-        if (IsIptcSupported(filePath) && await WriteIptcKeywordAsync(filePath, tagName, add: true))
-            return;
+        await _ctx.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+             INSERT INTO ImageTags (FilePath, TagName)
+             SELECT {filePath}, {tagName}
+             WHERE NOT EXISTS (
+                 SELECT 1 FROM ImageTags
+                 WHERE FilePath = {filePath} AND TagName = {tagName}
+             )
+             """);
+    }
 
-        if (!await _ctx.ImageTags.AnyAsync(t => t.FilePath == filePath && t.TagName == tagName))
-        {
-            _ctx.ImageTags.Add(new ImageTagEntity { FilePath = filePath, TagName = tagName });
-            await _ctx.SaveChangesAsync();
-        }
+    // 複数ファイルへの一括追加: 1トランザクションで N 件まとめて書き込む
+    public async Task AddTagBulkAsync(IReadOnlyList<string> filePaths, string tagName)
+    {
+        if (filePaths.Count == 0) return;
+        await using var tx = await _ctx.Database.BeginTransactionAsync();
+        foreach (var fp in filePaths)
+            await _ctx.Database.ExecuteSqlInterpolatedAsync(
+                $"INSERT INTO ImageTags (FilePath, TagName) SELECT {fp}, {tagName} WHERE NOT EXISTS (SELECT 1 FROM ImageTags WHERE FilePath = {fp} AND TagName = {tagName})");
+        await tx.CommitAsync();
     }
 
     public async Task RemoveTagAsync(string filePath, string tagName)
     {
-        if (IsIptcSupported(filePath) && await WriteIptcKeywordAsync(filePath, tagName, add: false))
-            return;
+        await _ctx.Database.ExecuteSqlInterpolatedAsync(
+            $"DELETE FROM ImageTags WHERE FilePath = {filePath} AND TagName = {tagName}");
+    }
 
-        var entity = await _ctx.ImageTags
-            .FirstOrDefaultAsync(t => t.FilePath == filePath && t.TagName == tagName);
-        if (entity != null)
-        {
-            _ctx.ImageTags.Remove(entity);
-            await _ctx.SaveChangesAsync();
-        }
+    // 複数ファイルからの一括削除: 1トランザクションでまとめて削除
+    public async Task RemoveTagBulkAsync(IReadOnlyList<string> filePaths, string tagName)
+    {
+        if (filePaths.Count == 0) return;
+        await using var tx = await _ctx.Database.BeginTransactionAsync();
+        foreach (var fp in filePaths)
+            await _ctx.Database.ExecuteSqlInterpolatedAsync(
+                $"DELETE FROM ImageTags WHERE FilePath = {fp} AND TagName = {tagName}");
+        await tx.CommitAsync();
     }
 
     public async Task<IReadOnlyList<string>> GetAllTagNamesAsync()
         => await _ctx.ImageTags.Select(t => t.TagName).Distinct().ToListAsync();
 
-    private static bool IsIptcSupported(string filePath) =>
-        IptcSupported.Contains(Path.GetExtension(filePath));
+    // OneDrive Files On-Demand などクラウド専用ファイルを判定
+    // FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS (0x400000): アクセス時にダウンロードが発生するファイル
+    private static bool IsCloudFile(string filePath)
+    {
+        try
+        {
+            const FileAttributes cloudMask = (FileAttributes)0x400000;
+            return (File.GetAttributes(filePath) & cloudMask) != 0;
+        }
+        catch { return false; }
+    }
 
     private static Task<IReadOnlyList<Tag>> ReadIptcKeywordsAsync(string filePath)
     {
-        // MetadataExtractor はヘッダーのみ読むため ImageSharp より大幅に高速
         return Task.Run<IReadOnlyList<Tag>>(() =>
         {
             try
@@ -75,7 +169,6 @@ public class TagService : ITagService
                 var iptc = directories.OfType<IptcDirectory>().FirstOrDefault();
                 if (iptc == null) return Array.Empty<Tag>();
 
-                // 繰り返し可能な IPTC タグは StringValue[] として格納される
                 var raw = iptc.GetObject(IptcDirectory.TagKeywords);
                 IEnumerable<string> keywords = raw switch
                 {
@@ -92,27 +185,5 @@ public class TagService : ITagService
             }
             catch { return Array.Empty<Tag>(); }
         });
-    }
-
-    private static async Task<bool> WriteIptcKeywordAsync(string filePath, string tagName, bool add)
-    {
-        try
-        {
-            using var image = await Image.LoadAsync(filePath);
-            var iptc = image.Metadata.IptcProfile ?? new IptcProfile();
-            var existing = iptc.GetValues(IptcTag.Keywords)
-                .Select(v => v.Value)
-                .ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-            if (add) existing.Add(tagName);
-            else existing.Remove(tagName);
-
-            iptc.RemoveValue(IptcTag.Keywords);
-            foreach (var kw in existing) iptc.SetValue(IptcTag.Keywords, kw, strict: false);
-            image.Metadata.IptcProfile = iptc;
-            await image.SaveAsync(filePath);
-            return true;
-        }
-        catch { return false; }
     }
 }

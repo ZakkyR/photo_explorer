@@ -102,8 +102,7 @@ public partial class ImageGridView : UserControl
             dialog.Owner = Window.GetWindow(this);
             if (dialog.ShowDialog() == true)
             {
-                foreach (var selVm in selected)
-                    selVm.Model.Tags = (await tagService.GetTagsAsync(selVm.Model.FilePath)).ToList();
+                // ダイアログ内でメモリ更新済みのため再読み不要。フィルタのみ更新
                 await mainVm.RefreshTagFiltersAsync();
                 mainVm.ApplyTagFilter();
             }

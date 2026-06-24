@@ -48,13 +48,18 @@ public partial class BulkTagEditDialog : Window
         AddButton.IsEnabled = false;
         try
         {
+            var targets = _items
+                .Where(item => !item.Tags.Any(t => t.Name == name))
+                .Select(item => item.FilePath)
+                .ToList();
+            await _tagService.AddTagBulkAsync(targets, name);
+
+            // DB 書き込み後はメモリ内リストを直接更新（ファイル再読み不要）
+            var newTag = new Tag(name);
             foreach (var item in _items)
-            {
                 if (!item.Tags.Any(t => t.Name == name))
-                    await _tagService.AddTagAsync(item.FilePath, name);
-            }
-            foreach (var item in _items)
-                item.Tags = (await _tagService.GetTagsAsync(item.FilePath)).ToList();
+                    item.Tags = item.Tags.Append(newTag).OrderBy(t => t.Name).ToList();
+
             NewTagBox.Clear();
             RefreshCommonTags();
             _hasChanges = true;
@@ -70,13 +75,16 @@ public partial class BulkTagEditDialog : Window
     {
         if (sender is FrameworkElement fe && fe.Tag is string tagName)
         {
+            var targets = _items
+                .Where(item => item.Tags.Any(t => t.Name == tagName))
+                .Select(item => item.FilePath)
+                .ToList();
+            await _tagService.RemoveTagBulkAsync(targets, tagName);
+
+            // DB 削除後はメモリ内リストを直接更新（ファイル再読み不要）
             foreach (var item in _items)
-            {
-                if (item.Tags.Any(t => t.Name == tagName))
-                    await _tagService.RemoveTagAsync(item.FilePath, tagName);
-            }
-            foreach (var item in _items)
-                item.Tags = (await _tagService.GetTagsAsync(item.FilePath)).ToList();
+                item.Tags = item.Tags.Where(t => t.Name != tagName).ToList();
+
             RefreshCommonTags();
             _hasChanges = true;
         }

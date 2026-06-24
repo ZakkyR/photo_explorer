@@ -13,17 +13,12 @@ public class ImageService : IImageService
     public async Task<IReadOnlyList<ImageItem>> LoadImagesFromFolderAsync(
         string folderPath, ITagService tagService)
     {
-        var files = _folderService.GetImageFilesInFolder(folderPath);
-        var items = new List<ImageItem>();
-        foreach (var file in files)
+        var files = _folderService.GetImageFilesInFolder(folderPath).ToList();
+        var tagsBulk = await tagService.GetTagsBulkAsync(files);
+        return files.Select(f => new ImageItem(f)
         {
-            var item = new ImageItem(file)
-            {
-                Tags = (await tagService.GetTagsAsync(file)).ToList()
-            };
-            items.Add(item);
-        }
-        return items;
+            Tags = tagsBulk.TryGetValue(f, out var t) ? t : new List<Tag>()
+        }).ToList();
     }
 
     public async Task<IReadOnlyList<ImageItem>> LoadImagesFromAlbumAsync(

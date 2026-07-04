@@ -70,12 +70,13 @@ public partial class App : Application
         services.AddTransient<MainWindow>();
         Services = services.BuildServiceProvider();
 
-        // 既存 SQLite タグを tags.json に移行（初回のみ）
+        // 既存データの移行をバックグラウンドで実行（初回のみ）
         var migrationFlag = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "PhotoExplorer", "migration_v1.done");
-        if (!File.Exists(migrationFlag))
+        _ = Task.Run(async () =>
         {
+            if (File.Exists(migrationFlag)) return;
             var sidecarSvc = Services.GetRequiredService<ISidecarService>();
             var existingTags = dbContext.ImageTags
                 .Select(t => new { t.FilePath, t.TagName })
@@ -88,14 +89,12 @@ public partial class App : Application
             foreach (var group in groups)
             {
                 if (!Directory.Exists(group.Key)) continue;
-                sidecarSvc.WriteInitialTagsAsync(
+                await sidecarSvc.WriteInitialTagsAsync(
                     group.Key,
-                    group.Select(t => (Path.GetFileName(t.FilePath), t.TagName))
-                         .ToList())
-                    .GetAwaiter().GetResult();
+                    group.Select(t => (Path.GetFileName(t.FilePath), t.TagName)).ToList());
             }
             File.WriteAllText(migrationFlag, DateTime.UtcNow.ToString("O"));
-        }
+        });
 
         Services.GetRequiredService<MainWindow>().Show();
     }

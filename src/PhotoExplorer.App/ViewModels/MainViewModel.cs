@@ -178,50 +178,29 @@ public partial class MainViewModel : ObservableObject
     private async Task LoadImagesAsync(IReadOnlyList<ImageItem> items)
     {
         IsLoading = true;
-        AllImages.Clear();
-        FilteredImages.Clear();
-        TagFilters.Clear();
-
         var vms = items.Select(i => new ImageItemViewModel(i)).ToList();
         AllImages.ReplaceAll(vms);
 
         await RefreshTagFiltersAsync();
         ApplyTagFilter();
 
+        IsLoading = false;
+
         Directory.CreateDirectory(ThumbnailCacheDir);
-        _ = Task.Run(async () =>
+        // 各サムネイルを並列で読み込み、完了次第 UI に反映（全完了を待たずに表示）
+        _ = Task.Run(async () => await Task.WhenAll(vms.Select(vm => Task.Run(async () =>
         {
-            // スレッドプールで生ピクセル配列のみ生成し、UI スレッドで WriteableBitmap を作成する。
-            // WriteableBitmap は BackBuffer ポインタで描画されるため CachedBitmap(IWICBitmap/STA) と違い
-            // コンポジションスレッドからの COM マーシャリングが発生せずプレビュー表示がブロックされない。
-            var pixelData = new (byte[]? pixels, int width, int height)[vms.Count];
-            try
-            {
-                await Task.WhenAll(vms.Select((vm, i) => Task.Run(() =>
+            var (pixels, w, h) = LoadThumbnailPixels(vm.Model.FilePath);
+            if (pixels == null) return;
+            await Application.Current.Dispatcher.InvokeAsync(
+                () =>
                 {
-                    pixelData[i] = LoadThumbnailPixels(vm.Model.FilePath);
-                })));
-            }
-            finally
-            {
-                _ = Application.Current.Dispatcher.BeginInvoke(
-                    System.Windows.Threading.DispatcherPriority.Background,
-                    new Action(() =>
-                    {
-                        for (int i = 0; i < vms.Count; i++)
-                        {
-                            var (pixels, w, h) = pixelData[i];
-                            if (pixels != null)
-                            {
-                                var wb = new WriteableBitmap(w, h, 96, 96, System.Windows.Media.PixelFormats.Bgra32, null);
-                                wb.WritePixels(new System.Windows.Int32Rect(0, 0, w, h), pixels, w * 4, 0);
-                                vms[i].Thumbnail = wb;
-                            }
-                        }
-                        IsLoading = false;
-                    }));
-            }
-        });
+                    var wb = new WriteableBitmap(w, h, 96, 96, System.Windows.Media.PixelFormats.Bgra32, null);
+                    wb.WritePixels(new System.Windows.Int32Rect(0, 0, w, h), pixels, w * 4, 0);
+                    vm.Thumbnail = wb;
+                },
+                System.Windows.Threading.DispatcherPriority.Background);
+        }))));
 
         if (ThumbnailSize >= FullImageThreshold)
         {

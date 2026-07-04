@@ -15,6 +15,7 @@ public class SidecarService : ISidecarService
     private readonly AppDbContext _ctx;
     private readonly Dictionary<string, FileSystemWatcher> _watchers = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, Func<string, Task>> _callbacks = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, DateTime> _mergedAt = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _lock = new();
 
     public SidecarService(AppDbContext ctx) => _ctx = ctx;
@@ -26,6 +27,28 @@ public class SidecarService : ISidecarService
 
     private static string SidecarPath(string folderPath)
         => Path.Combine(folderPath, SidecarDirName, SidecarFileName);
+
+    private static string MergedAtPath(string folderPath)
+        => Path.Combine(folderPath, SidecarDirName, "merged.ts");
+
+    private static DateTime ReadPersistedMergedAt(string folderPath)
+    {
+        try
+        {
+            var p = MergedAtPath(folderPath);
+            if (!File.Exists(p)) return DateTime.MinValue;
+            return DateTime.Parse(File.ReadAllText(p), null,
+                System.Globalization.DateTimeStyles.RoundtripKind);
+        }
+        catch { return DateTime.MinValue; }
+    }
+
+    private void PersistMergedAt(string folderPath, DateTime mtime)
+    {
+        try { File.WriteAllText(MergedAtPath(folderPath), mtime.ToString("O")); }
+        catch { }
+        lock (_lock) _mergedAt[folderPath] = mtime;
+    }
 
     // ── JSON 読み書き ────────────────────────────────────────────
 
@@ -62,22 +85,46 @@ public class SidecarService : ISidecarService
 
     public async Task MergeIntoDbAsync(string folderPath)
     {
+        var sidecarPath = SidecarPath(folderPath);
+        if (!File.Exists(sidecarPath)) return;
+
+        var sidecarMtime = File.GetLastWriteTimeUtc(sidecarPath);
+
+        // in-memory キャッシュチェック（同セッション内の重複 merge をスキップ）
+        lock (_lock)
+        {
+            if (_mergedAt.TryGetValue(folderPath, out var cached) && sidecarMtime <= cached)
+                return;
+        }
+
+        // 永続化キャッシュチェック（起動時のスキップ）
+        var persisted = ReadPersistedMergedAt(folderPath);
+        if (sidecarMtime <= persisted)
+        {
+            lock (_lock) _mergedAt[folderPath] = persisted;
+            return;
+        }
+
         var sidecar = ReadFile(folderPath);
         var latest = sidecar.GetLatestEntries();
-        if (latest.Count == 0) return;
 
-        await using var tx = await _ctx.Database.BeginTransactionAsync();
-        foreach (var entry in latest)
+        if (latest.Count > 0)
         {
-            var fullPath = Path.Combine(folderPath, entry.File);
-            if (entry.Removed)
-                await _ctx.Database.ExecuteSqlInterpolatedAsync(
-                    $"DELETE FROM ImageTags WHERE FilePath = {fullPath} AND TagName = {entry.Tag}");
-            else
-                await _ctx.Database.ExecuteSqlInterpolatedAsync(
-                    $"INSERT INTO ImageTags (FilePath, TagName) SELECT {fullPath}, {entry.Tag} WHERE NOT EXISTS (SELECT 1 FROM ImageTags WHERE FilePath = {fullPath} AND TagName = {entry.Tag})");
+            await using var tx = await _ctx.Database.BeginTransactionAsync();
+            foreach (var entry in latest)
+            {
+                var fullPath = Path.Combine(folderPath, entry.File);
+                if (entry.Removed)
+                    await _ctx.Database.ExecuteSqlInterpolatedAsync(
+                        $"DELETE FROM ImageTags WHERE FilePath = {fullPath} AND TagName = {entry.Tag}");
+                else
+                    await _ctx.Database.ExecuteSqlInterpolatedAsync(
+                        $"INSERT INTO ImageTags (FilePath, TagName) SELECT {fullPath}, {entry.Tag} WHERE NOT EXISTS (SELECT 1 FROM ImageTags WHERE FilePath = {fullPath} AND TagName = {entry.Tag})");
+            }
+            await tx.CommitAsync();
         }
-        await tx.CommitAsync();
+
+        PersistMergedAt(folderPath, sidecarMtime);
     }
 
     public Task AddEntryAsync(string filePath, string tagName)
@@ -99,7 +146,7 @@ public class SidecarService : ISidecarService
                     RemoveExisting(sidecar, fileName, tagName);
                     sidecar.Entries.Add(new() { File = fileName, Tag = tagName, Removed = false, Ts = DateTime.UtcNow });
                 }
-                WriteFile(group.Key, sidecar);
+                WriteFileAndMarkMerged(group.Key, sidecar);
             }
         });
 
@@ -122,7 +169,7 @@ public class SidecarService : ISidecarService
                     RemoveExisting(sidecar, fileName, tagName);
                     sidecar.Entries.Add(new() { File = fileName, Tag = tagName, Removed = true, Ts = DateTime.UtcNow });
                 }
-                WriteFile(group.Key, sidecar);
+                WriteFileAndMarkMerged(group.Key, sidecar);
             }
         });
 
@@ -220,12 +267,19 @@ public class SidecarService : ISidecarService
 
     // ── ヘルパー ─────────────────────────────────────────────────
 
-    private static void UpdateSidecar(string folderPath, string fileName, string tagName, bool removed)
+    private void UpdateSidecar(string folderPath, string fileName, string tagName, bool removed)
     {
         var sidecar = ReadFile(folderPath);
         RemoveExisting(sidecar, fileName, tagName);
         sidecar.Entries.Add(new() { File = fileName, Tag = tagName, Removed = removed, Ts = DateTime.UtcNow });
-        WriteFile(folderPath, sidecar);
+        WriteFileAndMarkMerged(folderPath, sidecar);
+    }
+
+    // 書き込み後に merged.ts を更新して、ウォッチャー起因の冗長 merge を防ぐ
+    private void WriteFileAndMarkMerged(string folderPath, SidecarFile file)
+    {
+        WriteFile(folderPath, file);
+        PersistMergedAt(folderPath, File.GetLastWriteTimeUtc(SidecarPath(folderPath)));
     }
 
     private static void RemoveExisting(SidecarFile sidecar, string fileName, string tagName)

@@ -89,7 +89,14 @@ public partial class MainViewModel : ObservableObject
         await _folderService.UnregisterFolderAsync(path);
         var item = Folders.FirstOrDefault(f => f.Path == path);
         if (item != null) Folders.Remove(item);
-        if (SelectedFolder == path) { AllImages.Clear(); FilteredImages.Clear(); SelectedFolder = null; SelectedFolderPath = string.Empty; }
+        if (SelectedFolder == path)
+        {
+            _sidecarService.StopWatching(path);
+            AllImages.Clear();
+            FilteredImages.Clear();
+            SelectedFolder = null;
+            SelectedFolderPath = string.Empty;
+        }
     }
 
     [RelayCommand]
@@ -161,6 +168,7 @@ public partial class MainViewModel : ObservableObject
 
     public async Task SelectAlbumAsync(Album album)
     {
+        if (SelectedFolder != null) _sidecarService.StopWatching(SelectedFolder);
         SelectedAlbum = album;
         SelectedFolder = null;
         SelectedFolderPath = string.Empty;

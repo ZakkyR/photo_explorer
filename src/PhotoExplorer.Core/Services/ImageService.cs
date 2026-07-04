@@ -7,12 +7,18 @@ namespace PhotoExplorer.Core.Services;
 public class ImageService : IImageService
 {
     private readonly IFolderService _folderService;
+    private readonly ISidecarService _sidecarService;
 
-    public ImageService(IFolderService folderService) => _folderService = folderService;
+    public ImageService(IFolderService folderService, ISidecarService sidecarService)
+    {
+        _folderService = folderService;
+        _sidecarService = sidecarService;
+    }
 
     public async Task<IReadOnlyList<ImageItem>> LoadImagesFromFolderAsync(
         string folderPath, ITagService tagService)
     {
+        await _sidecarService.MergeIntoDbAsync(folderPath);
         var files = _folderService.GetImageFilesInFolder(folderPath).ToList();
         var tagsBulk = await tagService.GetTagsBulkAsync(files);
         return files.Select(f => new ImageItem(f)

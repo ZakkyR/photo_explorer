@@ -1,20 +1,36 @@
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using PhotoExplorer.Core.Services;
 using PhotoExplorer.Data;
 
 namespace PhotoExplorer.Tests.Services;
 
-public class TagServiceTests
+public class TagServiceTests : IDisposable
 {
-    private AppDbContext CreateContext() =>
-        new(new DbContextOptionsBuilder<AppDbContext>()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+    private readonly SqliteConnection _connection;
+    private readonly AppDbContext _ctx;
+
+    public TagServiceTests()
+    {
+        _connection = new SqliteConnection("Data Source=:memory:");
+        _connection.Open();
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseSqlite(_connection)
+            .Options;
+        _ctx = new AppDbContext(options);
+        _ctx.Database.EnsureCreated();
+    }
+
+    public void Dispose()
+    {
+        _ctx.Dispose();
+        _connection.Dispose();
+    }
 
     [Fact]
     public async Task AddTag_NonJpeg_SavesInDb()
     {
-        using var ctx = CreateContext();
-        var svc = new TagService(ctx);
+        var svc = new TagService(_ctx);
 
         await svc.AddTagAsync(@"C:\photo.cr2", "夏");
 
@@ -25,8 +41,7 @@ public class TagServiceTests
     [Fact]
     public async Task RemoveTag_NonJpeg_RemovesFromDb()
     {
-        using var ctx = CreateContext();
-        var svc = new TagService(ctx);
+        var svc = new TagService(_ctx);
         await svc.AddTagAsync(@"C:\photo.cr2", "夏");
 
         await svc.RemoveTagAsync(@"C:\photo.cr2", "夏");
@@ -38,8 +53,7 @@ public class TagServiceTests
     [Fact]
     public async Task AddTag_NoDuplicates()
     {
-        using var ctx = CreateContext();
-        var svc = new TagService(ctx);
+        var svc = new TagService(_ctx);
 
         await svc.AddTagAsync(@"C:\photo.cr2", "夏");
         await svc.AddTagAsync(@"C:\photo.cr2", "夏");
@@ -51,8 +65,7 @@ public class TagServiceTests
     [Fact]
     public async Task GetAllTagNames_ReturnsDistinctNames()
     {
-        using var ctx = CreateContext();
-        var svc = new TagService(ctx);
+        var svc = new TagService(_ctx);
         await svc.AddTagAsync(@"C:\a.cr2", "夏");
         await svc.AddTagAsync(@"C:\b.cr2", "夏");
         await svc.AddTagAsync(@"C:\c.cr2", "冬");

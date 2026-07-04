@@ -58,12 +58,43 @@ public partial class App : Application
 
         var services = new ServiceCollection();
         services.AddSingleton(dbContext);
+        services.AddSingleton<ISidecarService>(sp => new SidecarService(sp.GetRequiredService<AppDbContext>()));
         services.AddSingleton<IFolderService>(sp => new FolderService(sp.GetRequiredService<AppDbContext>()));
-        services.AddSingleton<ITagService>(sp => new TagService(sp.GetRequiredService<AppDbContext>()));
+        services.AddSingleton<ITagService>(sp => new TagService(
+            sp.GetRequiredService<AppDbContext>(),
+            sp.GetRequiredService<ISidecarService>()));
         services.AddSingleton<IAlbumService>(sp => new AlbumService(sp.GetRequiredService<AppDbContext>()));
-        services.AddSingleton<IImageService>(sp => new ImageService(sp.GetRequiredService<IFolderService>()));
+        services.AddSingleton<IImageService>(sp => new ImageService(
+            sp.GetRequiredService<IFolderService>(),
+            sp.GetRequiredService<ISidecarService>()));
         services.AddTransient<MainWindow>();
         Services = services.BuildServiceProvider();
+
+        // 既存データの移行をバックグラウンドで実行（初回のみ）
+        var migrationFlag = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "PhotoExplorer", "migration_v1.done");
+        _ = Task.Run(async () =>
+        {
+            if (File.Exists(migrationFlag)) return;
+            var sidecarSvc = Services.GetRequiredService<ISidecarService>();
+            var existingTags = dbContext.ImageTags
+                .Select(t => new { t.FilePath, t.TagName })
+                .ToList();
+            var groups = existingTags
+                .Where(t => !string.IsNullOrEmpty(Path.GetDirectoryName(t.FilePath)))
+                .GroupBy(
+                    t => Path.GetDirectoryName(t.FilePath)!,
+                    StringComparer.OrdinalIgnoreCase);
+            foreach (var group in groups)
+            {
+                if (!Directory.Exists(group.Key)) continue;
+                await sidecarSvc.WriteInitialTagsAsync(
+                    group.Key,
+                    group.Select(t => (Path.GetFileName(t.FilePath), t.TagName)).ToList());
+            }
+            File.WriteAllText(migrationFlag, DateTime.UtcNow.ToString("O"));
+        });
 
         Services.GetRequiredService<MainWindow>().Show();
     }
@@ -71,6 +102,7 @@ public partial class App : Application
     protected override void OnExit(ExitEventArgs e)
     {
         AppSettings.Save();
+        (Services.GetService<ISidecarService>() as IDisposable)?.Dispose();
         (Services.GetService<IFolderService>() as IDisposable)?.Dispose();
         base.OnExit(e);
     }

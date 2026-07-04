@@ -21,6 +21,7 @@ public partial class MainViewModel : ObservableObject
     private readonly IAlbumService _albumService;
     private readonly IImageService _imageService;
     private readonly ITagService _tagService;
+    private readonly ISidecarService _sidecarService;
 
     public ObservableCollection<FolderInfo> Folders { get; } = new();
     public ObservableCollection<Album> Albums { get; } = new();
@@ -47,12 +48,14 @@ public partial class MainViewModel : ObservableObject
         IFolderService folderService,
         IAlbumService albumService,
         IImageService imageService,
-        ITagService tagService)
+        ITagService tagService,
+        ISidecarService sidecarService)
     {
         _folderService = folderService;
         _albumService = albumService;
         _imageService = imageService;
         _tagService = tagService;
+        _sidecarService = sidecarService;
 
         _folderService.FolderChanged += OnFolderChanged;
     }
@@ -86,7 +89,14 @@ public partial class MainViewModel : ObservableObject
         await _folderService.UnregisterFolderAsync(path);
         var item = Folders.FirstOrDefault(f => f.Path == path);
         if (item != null) Folders.Remove(item);
-        if (SelectedFolder == path) { AllImages.Clear(); FilteredImages.Clear(); SelectedFolder = null; SelectedFolderPath = string.Empty; }
+        if (SelectedFolder == path)
+        {
+            _sidecarService.StopWatching(path);
+            AllImages.Clear();
+            FilteredImages.Clear();
+            SelectedFolder = null;
+            SelectedFolderPath = string.Empty;
+        }
     }
 
     [RelayCommand]
@@ -138,15 +148,27 @@ public partial class MainViewModel : ObservableObject
 
     public async Task SelectFolderAsync(string path)
     {
+        if (SelectedFolder != null) _sidecarService.StopWatching(SelectedFolder);
+
         SelectedFolder = path;
         SelectedAlbum = null;
         SelectedFolderPath = path;
         App.AppSettings.LastSelectedFolder = path;
         await LoadImagesAsync(await _imageService.LoadImagesFromFolderAsync(path, _tagService));
+
+        _sidecarService.StartWatching(path, async _ =>
+        {
+            await Application.Current.Dispatcher.InvokeAsync(async () =>
+            {
+                await LoadImagesAsync(
+                    await _imageService.LoadImagesFromFolderAsync(path, _tagService));
+            });
+        });
     }
 
     public async Task SelectAlbumAsync(Album album)
     {
+        if (SelectedFolder != null) _sidecarService.StopWatching(SelectedFolder);
         SelectedAlbum = album;
         SelectedFolder = null;
         SelectedFolderPath = string.Empty;

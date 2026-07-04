@@ -13,8 +13,13 @@ public class TagService : ITagService
         new(StringComparer.OrdinalIgnoreCase) { ".jpg", ".jpeg", ".png" };
 
     private readonly AppDbContext _ctx;
+    private readonly ISidecarService? _sidecar;
 
-    public TagService(AppDbContext ctx) => _ctx = ctx;
+    public TagService(AppDbContext ctx, ISidecarService? sidecar = null)
+    {
+        _ctx = ctx;
+        _sidecar = sidecar;
+    }
 
     public async Task<IReadOnlyList<Tag>> GetTagsAsync(string filePath)
     {
@@ -114,6 +119,7 @@ public class TagService : ITagService
                  WHERE FilePath = {filePath} AND TagName = {tagName}
              )
              """);
+        if (_sidecar != null) await _sidecar.AddEntryAsync(filePath, tagName);
     }
 
     // 複数ファイルへの一括追加: 1トランザクションで N 件まとめて書き込む
@@ -125,12 +131,14 @@ public class TagService : ITagService
             await _ctx.Database.ExecuteSqlInterpolatedAsync(
                 $"INSERT INTO ImageTags (FilePath, TagName) SELECT {fp}, {tagName} WHERE NOT EXISTS (SELECT 1 FROM ImageTags WHERE FilePath = {fp} AND TagName = {tagName})");
         await tx.CommitAsync();
+        if (_sidecar != null) await _sidecar.AddEntryBulkAsync(filePaths, tagName);
     }
 
     public async Task RemoveTagAsync(string filePath, string tagName)
     {
         await _ctx.Database.ExecuteSqlInterpolatedAsync(
             $"DELETE FROM ImageTags WHERE FilePath = {filePath} AND TagName = {tagName}");
+        if (_sidecar != null) await _sidecar.RemoveEntryAsync(filePath, tagName);
     }
 
     // 複数ファイルからの一括削除: 1トランザクションでまとめて削除
@@ -142,6 +150,7 @@ public class TagService : ITagService
             await _ctx.Database.ExecuteSqlInterpolatedAsync(
                 $"DELETE FROM ImageTags WHERE FilePath = {fp} AND TagName = {tagName}");
         await tx.CommitAsync();
+        if (_sidecar != null) await _sidecar.RemoveEntryBulkAsync(filePaths, tagName);
     }
 
     public async Task<IReadOnlyList<string>> GetAllTagNamesAsync()

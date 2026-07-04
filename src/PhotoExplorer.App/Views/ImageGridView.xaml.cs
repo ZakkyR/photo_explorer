@@ -10,6 +10,7 @@ namespace PhotoExplorer.App.Views;
 public partial class ImageGridView : UserControl
 {
     private Point _dragStartPoint;
+    private int _anchorIndex = -1;
 
     public ImageGridView() => InitializeComponent();
 
@@ -49,8 +50,9 @@ public partial class ImageGridView : UserControl
 
         var mainVm = Vm;
         bool ctrl = Keyboard.IsKeyDown(Key.LeftCtrl) || Keyboard.IsKeyDown(Key.RightCtrl);
+        bool shift = Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift);
 
-        if (e.ClickCount >= 2 && !ctrl)
+        if (e.ClickCount >= 2 && !ctrl && !shift)
         {
             var images = mainVm.FilteredImages.Select(i => i.Model).ToList();
             var index = images.IndexOf(vm.Model);
@@ -60,15 +62,33 @@ public partial class ImageGridView : UserControl
             return;
         }
 
-        if (ctrl)
+        var clickedIndex = mainVm.FilteredImages.IndexOf(vm);
+
+        if (shift && _anchorIndex >= 0 && _anchorIndex < mainVm.FilteredImages.Count)
+        {
+            var lo = Math.Min(_anchorIndex, clickedIndex);
+            var hi = Math.Max(_anchorIndex, clickedIndex);
+
+            if (!ctrl)
+            {
+                foreach (var item in mainVm.FilteredImages)
+                    item.IsSelected = false;
+            }
+
+            for (int i = lo; i <= hi; i++)
+                mainVm.FilteredImages[i].IsSelected = true;
+        }
+        else if (ctrl)
         {
             vm.IsSelected = !vm.IsSelected;
+            _anchorIndex = clickedIndex;
         }
         else
         {
             foreach (var item in mainVm.FilteredImages)
                 item.IsSelected = false;
             vm.IsSelected = true;
+            _anchorIndex = clickedIndex;
         }
 
         e.Handled = false;

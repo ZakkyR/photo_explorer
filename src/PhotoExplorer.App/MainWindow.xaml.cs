@@ -15,7 +15,8 @@ public partial class MainWindow : Window
             App.Services.GetRequiredService<PhotoExplorer.Core.Services.IFolderService>(),
             App.Services.GetRequiredService<PhotoExplorer.Core.Services.IAlbumService>(),
             App.Services.GetRequiredService<PhotoExplorer.Core.Services.IImageService>(),
-            App.Services.GetRequiredService<PhotoExplorer.Core.Services.ITagService>());
+            App.Services.GetRequiredService<PhotoExplorer.Core.Services.ITagService>(),
+            App.Services.GetRequiredService<PhotoExplorer.Core.Services.ISidecarService>());
         DataContext = ViewModel;
         RestoreWindowState();
     }

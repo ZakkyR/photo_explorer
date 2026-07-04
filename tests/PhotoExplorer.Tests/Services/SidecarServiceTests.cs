@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using PhotoExplorer.Core.Models;
 using PhotoExplorer.Core.Services;
@@ -59,11 +60,27 @@ public class SidecarModelTests
     }
 }
 
-public class SidecarServiceTests
+public class SidecarServiceTests : IDisposable
 {
-    private static AppDbContext CreateContext() =>
-        new(new DbContextOptionsBuilder<AppDbContext>()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+    private readonly SqliteConnection _connection;
+
+    public SidecarServiceTests()
+    {
+        _connection = new SqliteConnection("Data Source=:memory:");
+        _connection.Open();
+    }
+
+    public void Dispose() => _connection.Dispose();
+
+    private AppDbContext CreateContext()
+    {
+        var ctx = new AppDbContext(
+            new DbContextOptionsBuilder<AppDbContext>()
+                .UseSqlite(_connection)
+                .Options);
+        ctx.Database.EnsureCreated();
+        return ctx;
+    }
 
     private static string MakeTempDir()
     {

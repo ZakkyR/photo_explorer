@@ -66,25 +66,18 @@ public class SidecarService : ISidecarService
         var latest = sidecar.GetLatestEntries();
         if (latest.Count == 0) return;
 
+        await using var tx = await _ctx.Database.BeginTransactionAsync();
         foreach (var entry in latest)
         {
             var fullPath = Path.Combine(folderPath, entry.File);
             if (entry.Removed)
-            {
-                var toRemove = _ctx.ImageTags
-                    .Where(t => t.FilePath == fullPath && t.TagName == entry.Tag)
-                    .ToList();
-                _ctx.ImageTags.RemoveRange(toRemove);
-            }
+                await _ctx.Database.ExecuteSqlInterpolatedAsync(
+                    $"DELETE FROM ImageTags WHERE FilePath = {fullPath} AND TagName = {entry.Tag}");
             else
-            {
-                var exists = _ctx.ImageTags
-                    .Any(t => t.FilePath == fullPath && t.TagName == entry.Tag);
-                if (!exists)
-                    _ctx.ImageTags.Add(new ImageTagEntity { FilePath = fullPath, TagName = entry.Tag });
-            }
+                await _ctx.Database.ExecuteSqlInterpolatedAsync(
+                    $"INSERT INTO ImageTags (FilePath, TagName) SELECT {fullPath}, {entry.Tag} WHERE NOT EXISTS (SELECT 1 FROM ImageTags WHERE FilePath = {fullPath} AND TagName = {entry.Tag})");
         }
-        await _ctx.SaveChangesAsync();
+        await tx.CommitAsync();
     }
 
     public Task AddEntryAsync(string filePath, string tagName)

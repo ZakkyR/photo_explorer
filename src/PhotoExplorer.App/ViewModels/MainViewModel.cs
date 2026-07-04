@@ -25,9 +25,9 @@ public partial class MainViewModel : ObservableObject
 
     public ObservableCollection<FolderInfo> Folders { get; } = new();
     public ObservableCollection<Album> Albums { get; } = new();
-    public ObservableCollection<ImageItemViewModel> AllImages { get; } = new();
-    public ObservableCollection<ImageItemViewModel> FilteredImages { get; } = new();
-    public ObservableCollection<TagFilterItem> TagFilters { get; } = new();
+    public ObservableRangeCollection<ImageItemViewModel> AllImages { get; } = new();
+    public ObservableRangeCollection<ImageItemViewModel> FilteredImages { get; } = new();
+    public ObservableRangeCollection<TagFilterItem> TagFilters { get; } = new();
 
     [ObservableProperty]
     private double _thumbnailSize = App.AppSettings.ThumbnailSize;
@@ -183,7 +183,7 @@ public partial class MainViewModel : ObservableObject
         TagFilters.Clear();
 
         var vms = items.Select(i => new ImageItemViewModel(i)).ToList();
-        foreach (var vm in vms) AllImages.Add(vm);
+        AllImages.ReplaceAll(vms);
 
         await RefreshTagFiltersAsync();
         ApplyTagFilter();
@@ -243,13 +243,13 @@ public partial class MainViewModel : ObservableObject
             .OrderBy(n => n)
             .ToList();
 
-        TagFilters.Clear();
-        foreach (var name in tagNames)
+        var newFilters = tagNames.Select(name =>
         {
             var item = new TagFilterItem(name) { IsSelected = previouslySelected.Contains(name) };
             item.SelectionChanged += (_, _) => ApplyTagFilter();
-            TagFilters.Add(item);
-        }
+            return item;
+        });
+        TagFilters.ReplaceAll(newFilters);
 
         return Task.CompletedTask;
     }
@@ -257,12 +257,9 @@ public partial class MainViewModel : ObservableObject
     public void ApplyTagFilter()
     {
         var selectedTags = TagFilters.Where(t => t.IsSelected).Select(t => t.Name).ToHashSet();
-        FilteredImages.Clear();
-        foreach (var vm in AllImages)
-        {
-            if (selectedTags.Count == 0 || vm.Model.Tags.Any(t => selectedTags.Contains(t.Name)))
-                FilteredImages.Add(vm);
-        }
+        var filtered = AllImages.Where(vm =>
+            selectedTags.Count == 0 || vm.Model.Tags.Any(t => selectedTags.Contains(t.Name)));
+        FilteredImages.ReplaceAll(filtered);
     }
 
     private void OnFolderChanged(object? sender, FolderChangedEventArgs e)

@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using PhotoExplorer.Core.Models;
@@ -28,8 +30,18 @@ public class SidecarService : ISidecarService
     private static string SidecarPath(string folderPath)
         => Path.Combine(folderPath, SidecarDirName, SidecarFileName);
 
+    private static readonly string MergedAtDir = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+        "PhotoExplorer", "merged_at");
+
+    // PC ごとのローカル AppData に保存する（OneDrive に同期させない）
     private static string MergedAtPath(string folderPath)
-        => Path.Combine(folderPath, SidecarDirName, "merged.ts");
+    {
+        Directory.CreateDirectory(MergedAtDir);
+        var hash = Convert.ToHexString(
+            MD5.HashData(Encoding.UTF8.GetBytes(folderPath.ToUpperInvariant())));
+        return Path.Combine(MergedAtDir, $"{hash}.ts");
+    }
 
     private static DateTime ReadPersistedMergedAt(string folderPath)
     {

@@ -22,6 +22,10 @@ public partial class MainViewModel : ObservableObject
     private readonly IImageService _imageService;
     private readonly ITagService _tagService;
     private readonly ISidecarService _sidecarService;
+    private readonly AppStatus _appStatus;
+
+    public string StatusMessage => _appStatus.StatusMessage;
+    public bool IsStatusMessageVisible => !string.IsNullOrEmpty(_appStatus.StatusMessage);
 
     public ObservableCollection<FolderInfo> Folders { get; } = new();
     public ObservableCollection<Album> Albums { get; } = new();
@@ -49,15 +53,25 @@ public partial class MainViewModel : ObservableObject
         IAlbumService albumService,
         IImageService imageService,
         ITagService tagService,
-        ISidecarService sidecarService)
+        ISidecarService sidecarService,
+        AppStatus appStatus)
     {
         _folderService = folderService;
         _albumService = albumService;
         _imageService = imageService;
         _tagService = tagService;
         _sidecarService = sidecarService;
+        _appStatus = appStatus;
 
         _folderService.FolderChanged += OnFolderChanged;
+        _appStatus.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(AppStatus.StatusMessage))
+            {
+                OnPropertyChanged(nameof(StatusMessage));
+                OnPropertyChanged(nameof(IsStatusMessageVisible));
+            }
+        };
     }
 
     public async Task InitializeAsync()
@@ -137,6 +151,39 @@ public partial class MainViewModel : ObservableObject
         var idx = current != null ? Folders.IndexOf(current) : -1;
         if (idx >= 0)
             Folders[idx] = new FolderInfo(folderPath, displayName);
+    }
+
+    public async Task ExportToSidecarAsync(string folderPath)
+    {
+        _appStatus.Set("JSON に書き出し中...");
+        try
+        {
+            await _sidecarService.ExportToSidecarAsync(folderPath);
+            _appStatus.Set("JSON に書き出しました", autoClear: true);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[PhotoExplorer] sync error: {ex}");
+            _appStatus.Set("同期に失敗しました", autoClear: true);
+        }
+    }
+
+    public async Task ImportFromSidecarAsync(string folderPath)
+    {
+        _appStatus.Set("JSON から取り込み中...");
+        try
+        {
+            await _sidecarService.ForceImportFromSidecarAsync(folderPath);
+            _appStatus.Set("JSON から取り込みました", autoClear: true);
+            if (SelectedFolder == folderPath)
+                await LoadImagesAsync(
+                    await _imageService.LoadImagesFromFolderAsync(folderPath, _tagService));
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[PhotoExplorer] sync error: {ex}");
+            _appStatus.Set("同期に失敗しました", autoClear: true);
+        }
     }
 
     public async Task SelectFolderAsync(string path)

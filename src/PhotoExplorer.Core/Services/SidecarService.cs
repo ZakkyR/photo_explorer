@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using PhotoExplorer.Core.Models;
@@ -10,7 +11,11 @@ namespace PhotoExplorer.Core.Services;
 
 public class SidecarService : ISidecarService
 {
-    private static readonly JsonSerializerOptions JsonOpts = new() { WriteIndented = true };
+    private static readonly JsonSerializerOptions JsonOpts = new()
+    {
+        WriteIndented = true,
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+    };
     private const string SidecarDirName = ".photoexplorer";
     private const string SidecarFileName = "tags.json";
 
@@ -137,6 +142,35 @@ public class SidecarService : ISidecarService
         }
 
         PersistMergedAt(folderPath, sidecarMtime);
+    }
+
+    public async Task ExportToSidecarAsync(string folderPath)
+    {
+        var normalizedFolder = folderPath.TrimEnd(Path.DirectorySeparatorChar, '/');
+        var prefix = normalizedFolder + Path.DirectorySeparatorChar;
+        var folderTags = await _ctx.ImageTags
+            .Where(t => t.FilePath.StartsWith(prefix))
+            .ToListAsync();
+
+        var sidecar = new SidecarFile();
+        var ts = DateTime.UtcNow;
+        foreach (var tag in folderTags)
+            sidecar.Entries.Add(new()
+            {
+                File = Path.GetFileName(tag.FilePath),
+                Tag = tag.TagName,
+                Removed = false,
+                Ts = ts
+            });
+
+        WriteFileAndMarkMerged(folderPath, sidecar);
+    }
+
+    public Task ForceImportFromSidecarAsync(string folderPath)
+    {
+        lock (_lock) _mergedAt.Remove(folderPath);
+        try { File.Delete(MergedAtPath(folderPath)); } catch { }
+        return MergeIntoDbAsync(folderPath);
     }
 
     public Task AddEntryAsync(string filePath, string tagName)

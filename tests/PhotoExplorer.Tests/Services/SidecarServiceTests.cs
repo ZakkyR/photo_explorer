@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using PhotoExplorer.Core.Models;
 using PhotoExplorer.Core.Services;
 using PhotoExplorer.Data;
+using PhotoExplorer.Data.Entities;
 
 namespace PhotoExplorer.Tests.Services;
 
@@ -231,6 +232,61 @@ public class SidecarServiceTests : IDisposable
             var file = JsonSerializer.Deserialize<SidecarFile>(File.ReadAllText(path))!;
             Assert.Contains(file.Entries, e => e.Tag == "既存");
             Assert.DoesNotContain(file.Entries, e => e.Tag == "新規");
+        }
+        finally { Directory.Delete(tmpDir, recursive: true); }
+    }
+
+    [Fact]
+    public async Task ExportToSidecarAsync_WritesDbTagsToJson()
+    {
+        using var ctx = CreateContext();
+        var tmpDir = MakeTempDir();
+        try
+        {
+            var filePath = Path.Combine(tmpDir, "img.jpg");
+            ctx.ImageTags.Add(new ImageTagEntity { FilePath = filePath, TagName = "旅行" });
+            await ctx.SaveChangesAsync();
+
+            using var svc = new SidecarService(ctx);
+            await svc.ExportToSidecarAsync(tmpDir);
+
+            var sidecarPath = Path.Combine(tmpDir, ".photoexplorer", "tags.json");
+            Assert.True(File.Exists(sidecarPath));
+            var content = File.ReadAllText(sidecarPath);
+            Assert.Contains("旅行", content);
+            Assert.Contains("img.jpg", content);
+        }
+        finally { Directory.Delete(tmpDir, recursive: true); }
+    }
+
+    [Fact]
+    public async Task ForceImportFromSidecarAsync_BypassesMtimeCache()
+    {
+        using var ctx = CreateContext();
+        var tmpDir = MakeTempDir();
+        try
+        {
+            // サイドカーを用意してキャッシュを温める
+            var sidecar = new SidecarFile
+            {
+                Entries = [new() { File = "img.jpg", Tag = "旅行", Removed = false, Ts = DateTime.UtcNow }]
+            };
+            WriteSidecar(tmpDir, sidecar);
+
+            using var svc = new SidecarService(ctx);
+            await svc.MergeIntoDbAsync(tmpDir); // キャッシュに記録
+
+            // DB をクリアしてキャッシュが効いているか確認
+            ctx.ImageTags.RemoveRange(ctx.ImageTags);
+            await ctx.SaveChangesAsync();
+            await svc.MergeIntoDbAsync(tmpDir); // キャッシュ有効 → スキップされる
+            var countAfterNormal = await ctx.ImageTags.CountAsync();
+            Assert.Equal(0, countAfterNormal); // スキップされたので 0 のまま
+
+            // ForceImport はキャッシュを無視して反映する
+            await svc.ForceImportFromSidecarAsync(tmpDir);
+            var countAfterForce = await ctx.ImageTags.CountAsync();
+            Assert.Equal(1, countAfterForce);
         }
         finally { Directory.Delete(tmpDir, recursive: true); }
     }

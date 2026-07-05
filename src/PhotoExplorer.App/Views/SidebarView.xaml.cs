@@ -45,6 +45,28 @@ public partial class SidebarView : UserControl
         await Vm.ApplyFolderRenameAsync(folderInfo.Path, dialog.NewName);
     }
 
+    private async void ExportToSidecar_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem mi) return;
+        var folderInfo = (mi.Tag as FolderInfo) ??
+                         (mi.Parent is ContextMenu cm
+                             ? (cm.PlacementTarget as FrameworkElement)?.DataContext as FolderInfo
+                             : null);
+        if (folderInfo == null) return;
+        await Vm.ExportToSidecarAsync(folderInfo.Path);
+    }
+
+    private async void ImportFromSidecar_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem mi) return;
+        var folderInfo = (mi.Tag as FolderInfo) ??
+                         (mi.Parent is ContextMenu cm
+                             ? (cm.PlacementTarget as FrameworkElement)?.DataContext as FolderInfo
+                             : null);
+        if (folderInfo == null) return;
+        await Vm.ImportFromSidecarAsync(folderInfo.Path);
+    }
+
     private async void ManageFolders_Click(object sender, RoutedEventArgs e)
     {
         if (sender is MenuItem mi && mi.Tag is Album album)

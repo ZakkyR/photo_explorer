@@ -38,6 +38,11 @@
                     <TextBlock Text="{Binding SelectedFolderPath}"
                                Foreground="Gray" FontSize="11"/>
                 </StatusBarItem>
+                <StatusBarItem Visibility="{Binding IsStatusMessageVisible,
+                                   Converter={StaticResource BoolToVisibilityConverter}}">
+                    <TextBlock Text="{Binding StatusMessage}"
+                               Foreground="#0078D4" FontSize="11"/>
+                </StatusBarItem>
                 <Separator/>
                 <StatusBarItem HorizontalAlignment="Right">
                     <StackPanel Orientation="Horizontal">

@@ -23,6 +23,9 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+    <Version>1.3.6</Version>
+    <FileVersion>1.3.6.0</FileVersion>
+    <AssemblyVersion>1.3.6.0</AssemblyVersion>
   </PropertyGroup>
 
 </Project>

@@ -58,6 +58,7 @@ public partial class App : Application
 
         var services = new ServiceCollection();
         services.AddSingleton(dbContext);
+        services.AddSingleton<AppStatus>();
         services.AddSingleton<ISidecarService>(sp => new SidecarService(sp.GetRequiredService<AppDbContext>()));
         services.AddSingleton<IFolderService>(sp => new FolderService(sp.GetRequiredService<AppDbContext>()));
         services.AddSingleton<ITagService>(sp => new TagService(
@@ -77,6 +78,8 @@ public partial class App : Application
         _ = Task.Run(async () =>
         {
             if (File.Exists(migrationFlag)) return;
+            var appStatus = Services.GetRequiredService<AppStatus>();
+            appStatus.Set("マイグレーション中...");
             var sidecarSvc = Services.GetRequiredService<ISidecarService>();
             var existingTags = dbContext.ImageTags
                 .Select(t => new { t.FilePath, t.TagName })
@@ -94,6 +97,7 @@ public partial class App : Application
                     group.Select(t => (Path.GetFileName(t.FilePath), t.TagName)).ToList());
             }
             File.WriteAllText(migrationFlag, DateTime.UtcNow.ToString("O"));
+            appStatus.Set("マイグレーション完了", autoClear: true);
         });
 
         Services.GetRequiredService<MainWindow>().Show();

@@ -22,6 +22,10 @@ public partial class MainViewModel : ObservableObject
     private readonly IImageService _imageService;
     private readonly ITagService _tagService;
     private readonly ISidecarService _sidecarService;
+    private readonly AppStatus _appStatus;
+
+    public string StatusMessage => _appStatus.StatusMessage;
+    public bool IsStatusMessageVisible => !string.IsNullOrEmpty(_appStatus.StatusMessage);
 
     public ObservableCollection<FolderInfo> Folders { get; } = new();
     public ObservableCollection<Album> Albums { get; } = new();
@@ -49,15 +53,25 @@ public partial class MainViewModel : ObservableObject
         IAlbumService albumService,
         IImageService imageService,
         ITagService tagService,
-        ISidecarService sidecarService)
+        ISidecarService sidecarService,
+        AppStatus appStatus)
     {
         _folderService = folderService;
         _albumService = albumService;
         _imageService = imageService;
         _tagService = tagService;
         _sidecarService = sidecarService;
+        _appStatus = appStatus;
 
         _folderService.FolderChanged += OnFolderChanged;
+        _appStatus.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(AppStatus.StatusMessage))
+            {
+                OnPropertyChanged(nameof(StatusMessage));
+                OnPropertyChanged(nameof(IsStatusMessageVisible));
+            }
+        };
     }
 
     public async Task InitializeAsync()

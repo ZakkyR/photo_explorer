@@ -128,20 +128,13 @@ public partial class MainViewModel : ObservableObject
             await SelectAlbumAsync(updated);
     }
 
-    [RelayCommand]
-    private async Task RenameFolder(string folderPath)
+    public async Task ApplyFolderRenameAsync(string folderPath, string newName)
     {
         var current = Folders.FirstOrDefault(f => f.Path == folderPath);
-        var currentName = current?.DisplayName ?? string.Empty;
-        var newName = Microsoft.VisualBasic.Interaction.InputBox(
-            "新しい表示名を入力してください（空欄でリセット）",
-            "名前を変更",
-            currentName);
-        if (newName == null) return; // cancelled
         var displayName = string.IsNullOrWhiteSpace(newName) ? null : newName.Trim();
         await _folderService.RenameFolderAsync(folderPath, displayName ?? string.Empty);
 
-        var idx = Folders.IndexOf(current!);
+        var idx = current != null ? Folders.IndexOf(current) : -1;
         if (idx >= 0)
             Folders[idx] = new FolderInfo(folderPath, displayName);
     }

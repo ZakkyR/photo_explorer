@@ -18,9 +18,9 @@
                                     MouseLeftButtonDown="FolderItem_Click">
                                 <Border.ContextMenu>
                                     <ContextMenu>
-                                        <MenuItem Header="名前を変更" CommandParameter="{Binding Path}"
-                                                  Command="{Binding DataContext.RenameFolderCommand,
-                                                    RelativeSource={RelativeSource AncestorType=ItemsControl}}"/>
+                                        <MenuItem Header="名前を変更"
+                                                  Click="FolderRename_Click"
+                                                  Tag="{Binding}"/>
                                         <Separator/>
                                         <MenuItem Header="削除" CommandParameter="{Binding Path}"
                                                   Command="{Binding DataContext.RemoveFolderCommand,

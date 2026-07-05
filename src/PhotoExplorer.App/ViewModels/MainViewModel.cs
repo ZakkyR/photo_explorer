@@ -187,22 +187,29 @@ public partial class MainViewModel : ObservableObject
         IsLoading = false;
 
         Directory.CreateDirectory(ThumbnailCacheDir);
-        // 各サムネイルを並列で読み込み、完了次第 UI に反映（全完了を待たずに表示）
-        _ = Task.Run(async () => await Task.WhenAll(vms.Select(vm => Task.Run(async () =>
+        // 同時4枚に絞って並列読み込み。全枚同時展開すると大量メモリを消費するため SemaphoreSlim で制御
+        _ = Task.Run(async () =>
         {
-            var (pixels, w, h) = LoadThumbnailPixels(vm.Model.FilePath);
-            if (pixels == null) return;
-            await Application.Current.Dispatcher.InvokeAsync(
-                () =>
-                {
-                    var wb = new WriteableBitmap(w, h, 96, 96, System.Windows.Media.PixelFormats.Bgra32, null);
-                    wb.WritePixels(new System.Windows.Int32Rect(0, 0, w, h), pixels, w * 4, 0);
-                    vm.Thumbnail = wb;
-                },
-                System.Windows.Threading.DispatcherPriority.Background);
-        }))));
+            using var sem = new SemaphoreSlim(4);
+            await Task.WhenAll(vms.Select(vm => Task.Run(async () =>
+            {
+                await sem.WaitAsync();
+                (byte[]? pixels, int w, int h) result;
+                try { result = LoadThumbnailPixels(vm.Model.FilePath); }
+                finally { sem.Release(); }
+                if (result.pixels == null) return;
+                await Application.Current.Dispatcher.InvokeAsync(
+                    () =>
+                    {
+                        var wb = new WriteableBitmap(result.w, result.h, 96, 96, System.Windows.Media.PixelFormats.Bgra32, null);
+                        wb.WritePixels(new System.Windows.Int32Rect(0, 0, result.w, result.h), result.pixels, result.w * 4, 0);
+                        vm.Thumbnail = wb;
+                    },
+                    System.Windows.Threading.DispatcherPriority.Background);
+            })));
+        });
 
-        if (ThumbnailSize >= FullImageThreshold)
+        if (ThumbnailSize >= FullImageThreshold && FilteredImages.Count <= FullImageMaxCount)
         {
             foreach (var vm in FilteredImages)
                 vm.LoadFullImage();
@@ -315,6 +322,7 @@ public partial class MainViewModel : ObservableObject
     public bool HasMultipleSelected => FilteredImages.Count(x => x.IsSelected) > 1;
 
     private const double FullImageThreshold = 300.0;
+    private const int FullImageMaxCount = 20;
 
     private static readonly string ThumbnailCacheDir = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -363,7 +371,7 @@ public partial class MainViewModel : ObservableObject
     {
         App.AppSettings.ThumbnailSize = value;
 
-        if (value >= FullImageThreshold)
+        if (value >= FullImageThreshold && FilteredImages.Count <= FullImageMaxCount)
         {
             foreach (var vm in FilteredImages)
                 vm.LoadFullImage();

@@ -153,6 +153,37 @@ public partial class MainViewModel : ObservableObject
             Folders[idx] = new FolderInfo(folderPath, displayName);
     }
 
+    public async Task ExportToSidecarAsync(string folderPath)
+    {
+        _appStatus.Set("JSON に書き出し中...");
+        try
+        {
+            await _sidecarService.ExportToSidecarAsync(folderPath);
+            _appStatus.Set("JSON に書き出しました", autoClear: true);
+        }
+        catch
+        {
+            _appStatus.Set("同期に失敗しました", autoClear: true);
+        }
+    }
+
+    public async Task ImportFromSidecarAsync(string folderPath)
+    {
+        _appStatus.Set("JSON から取り込み中...");
+        try
+        {
+            await _sidecarService.ForceImportFromSidecarAsync(folderPath);
+            _appStatus.Set("JSON から取り込みました", autoClear: true);
+            if (SelectedFolder == folderPath)
+                await LoadImagesAsync(
+                    await _imageService.LoadImagesFromFolderAsync(folderPath, _tagService));
+        }
+        catch
+        {
+            _appStatus.Set("同期に失敗しました", autoClear: true);
+        }
+    }
+
     public async Task SelectFolderAsync(string path)
     {
         if (SelectedFolder != null) _sidecarService.StopWatching(SelectedFolder);

@@ -161,8 +161,9 @@ public partial class MainViewModel : ObservableObject
             await _sidecarService.ExportToSidecarAsync(folderPath);
             _appStatus.Set("JSON に書き出しました", autoClear: true);
         }
-        catch
+        catch (Exception ex)
         {
+            System.Diagnostics.Debug.WriteLine($"[PhotoExplorer] sync error: {ex}");
             _appStatus.Set("同期に失敗しました", autoClear: true);
         }
     }
@@ -178,8 +179,9 @@ public partial class MainViewModel : ObservableObject
                 await LoadImagesAsync(
                     await _imageService.LoadImagesFromFolderAsync(folderPath, _tagService));
         }
-        catch
+        catch (Exception ex)
         {
+            System.Diagnostics.Debug.WriteLine($"[PhotoExplorer] sync error: {ex}");
             _appStatus.Set("同期に失敗しました", autoClear: true);
         }
     }

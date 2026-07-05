@@ -147,13 +147,10 @@ public class SidecarService : ISidecarService
     public async Task ExportToSidecarAsync(string folderPath)
     {
         var normalizedFolder = folderPath.TrimEnd(Path.DirectorySeparatorChar, '/');
-        var allTags = await _ctx.ImageTags.ToListAsync();
-        var folderTags = allTags
-            .Where(t => string.Equals(
-                Path.GetDirectoryName(t.FilePath),
-                normalizedFolder,
-                StringComparison.OrdinalIgnoreCase))
-            .ToList();
+        var prefix = normalizedFolder + Path.DirectorySeparatorChar;
+        var folderTags = await _ctx.ImageTags
+            .Where(t => t.FilePath.StartsWith(prefix))
+            .ToListAsync();
 
         var sidecar = new SidecarFile();
         var ts = DateTime.UtcNow;

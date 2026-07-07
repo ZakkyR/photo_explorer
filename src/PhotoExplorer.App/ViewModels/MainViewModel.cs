@@ -263,28 +263,50 @@ public partial class MainViewModel : ObservableObject
             .Select(t => t.Name)
             .ToHashSet();
 
+        var filters = new List<TagFilterItem>();
+
+        // タグなし写真が存在する場合のみ「タグなし」フィルターを先頭に追加
+        if (AllImages.Any(vm => vm.Model.Tags.Count == 0))
+        {
+            var untagged = new TagFilterItem("タグなし", isUntaggedFilter: true)
+            {
+                IsSelected = previouslySelected.Contains("タグなし")
+            };
+            untagged.SelectionChanged += (_, _) => ApplyTagFilter();
+            filters.Add(untagged);
+        }
+
         var tagNames = AllImages
             .SelectMany(vm => vm.Model.Tags.Select(t => t.Name))
             .Distinct()
-            .OrderBy(n => n)
-            .ToList();
+            .OrderBy(n => n);
 
-        var newFilters = tagNames.Select(name =>
+        foreach (var name in tagNames)
         {
             var item = new TagFilterItem(name) { IsSelected = previouslySelected.Contains(name) };
             item.SelectionChanged += (_, _) => ApplyTagFilter();
-            return item;
-        });
-        TagFilters.ReplaceAll(newFilters);
+            filters.Add(item);
+        }
 
+        TagFilters.ReplaceAll(filters);
         return Task.CompletedTask;
     }
 
     public void ApplyTagFilter()
     {
-        var selectedTags = TagFilters.Where(t => t.IsSelected).Select(t => t.Name).ToHashSet();
+        var showUntagged = TagFilters.Any(t => t.IsUntaggedFilter && t.IsSelected);
+        var selectedTags = TagFilters
+            .Where(t => !t.IsUntaggedFilter && t.IsSelected)
+            .Select(t => t.Name)
+            .ToHashSet();
+
         var filtered = AllImages.Where(vm =>
-            selectedTags.Count == 0 || vm.Model.Tags.Any(t => selectedTags.Contains(t.Name)));
+        {
+            if (!showUntagged && selectedTags.Count == 0) return true;
+            if (showUntagged && vm.Model.Tags.Count == 0) return true;
+            if (selectedTags.Count > 0 && vm.Model.Tags.Any(t => selectedTags.Contains(t.Name))) return true;
+            return false;
+        });
         FilteredImages.ReplaceAll(filtered);
     }
 

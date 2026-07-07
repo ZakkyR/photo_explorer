@@ -7,5 +7,6 @@
         <converters:PathToNameConverter x:Key="PathToNameConverter"/>
         <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>
         <converters:ZeroToVisibilityConverter x:Key="ZeroToVisibilityConverter"/>
+        <converters:BoolToItalicConverter x:Key="BoolToItalicConverter"/>
     </Application.Resources>
 </Application>

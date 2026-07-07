@@ -16,7 +16,9 @@
                         <CheckBox Content="{Binding Name}"
                                   IsChecked="{Binding IsSelected}"
                                   Margin="4,2" Padding="4,1"
-                                  VerticalAlignment="Center"/>
+                                  VerticalAlignment="Center"
+                                  FontStyle="{Binding IsUntaggedFilter,
+                                      Converter={StaticResource BoolToItalicConverter}}"/>
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>

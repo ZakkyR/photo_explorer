@@ -14,21 +14,65 @@
         </Grid.RowDefinitions>
 
         <!-- ツールバー -->
-        <StackPanel Grid.Row="0" Orientation="Horizontal" Background="#2D2D2D" Height="36">
-            <Button Content="&#9664;" Command="{Binding PreviousCommand}"
-                    Width="36" Background="Transparent" BorderThickness="0"
-                    Foreground="White" FontSize="16"/>
-            <TextBlock Text="{Binding CurrentFileName}"
-                       Foreground="White" VerticalAlignment="Center"
-                       Margin="8,0" TextTrimming="CharacterEllipsis" MaxWidth="600"/>
-            <Button Content="&#9654;" Command="{Binding NextCommand}"
-                    Width="36" Background="Transparent" BorderThickness="0"
-                    Foreground="White" FontSize="16"/>
-        </StackPanel>
+        <DockPanel Grid.Row="0" Background="#2D2D2D" Height="36" LastChildFill="True">
+            <!-- ズーム操作 -->
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="0,0,4,0">
+                <StackPanel.Resources>
+                    <Style TargetType="Button">
+                        <Setter Property="Background" Value="Transparent"/>
+                        <Setter Property="BorderThickness" Value="0"/>
+                        <Setter Property="Foreground" Value="White"/>
+                        <Setter Property="Padding" Value="8,0"/>
+                        <Setter Property="MinWidth" Value="32"/>
+                        <Setter Property="Focusable" Value="False"/>
+                    </Style>
+                </StackPanel.Resources>
+                <Button Content="－" FontSize="14" Click="ZoomOut_Click" ToolTip="縮小 (-)"/>
+                <TextBlock x:Name="ZoomText" Text="" Foreground="#CCCCCC"
+                           VerticalAlignment="Center" MinWidth="48" TextAlignment="Center"/>
+                <Button Content="＋" FontSize="14" Click="ZoomIn_Click" ToolTip="拡大 (+)"/>
+                <Button Content="全体" Click="ZoomFit_Click" ToolTip="ウィンドウに合わせる (0)"/>
+                <Button Content="等倍" Click="ZoomActual_Click" ToolTip="実寸表示 (1)"/>
+                <Button Content="既定のアプリで開く" Click="OpenExternal_Click" Margin="8,0,0,0"
+                        ToolTip="Windows の既定のアプリ（フォトなど）で開く"/>
+            </StackPanel>
+
+            <StackPanel Orientation="Horizontal">
+                <Button Content="&#9664;" Command="{Binding PreviousCommand}"
+                        Width="36" Background="Transparent" BorderThickness="0"
+                        Foreground="White" FontSize="16" Focusable="False"/>
+                <TextBlock Text="{Binding CurrentFileName}"
+                           Foreground="White" VerticalAlignment="Center"
+                           Margin="8,0" TextTrimming="CharacterEllipsis" MaxWidth="600"/>
+                <Button Content="&#9654;" Command="{Binding NextCommand}"
+                        Width="36" Background="Transparent" BorderThickness="0"
+                        Foreground="White" FontSize="16" Focusable="False"/>
+            </StackPanel>
+        </DockPanel>
 
         <!-- 画像表示 / 読込中 / 読込失敗 -->
         <Grid Grid.Row="1" Margin="8">
-            <Image Source="{Binding CurrentImage}" Stretch="Uniform"/>
+            <!-- ズーム・パン領域（ホイールで拡大縮小、ドラッグで移動、ダブルクリックで全体/等倍切替） -->
+            <Grid x:Name="ImageHost" ClipToBounds="True" Background="Transparent"
+                  MouseWheel="ImageHost_MouseWheel"
+                  MouseLeftButtonDown="ImageHost_MouseLeftButtonDown"
+                  MouseLeftButtonUp="ImageHost_MouseLeftButtonUp"
+                  MouseMove="ImageHost_MouseMove"
+                  LostMouseCapture="ImageHost_LostMouseCapture"
+                  SizeChanged="ImageHost_SizeChanged">
+                <Image x:Name="PreviewImage" Source="{Binding CurrentImage}" Stretch="Uniform"
+                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                       RenderTransformOrigin="0,0"
+                       RenderOptions.BitmapScalingMode="HighQuality"
+                       SizeChanged="PreviewImage_SizeChanged">
+                    <Image.RenderTransform>
+                        <TransformGroup>
+                            <ScaleTransform x:Name="ZoomScale" ScaleX="1" ScaleY="1"/>
+                            <TranslateTransform x:Name="ZoomTranslate" X="0" Y="0"/>
+                        </TransformGroup>
+                    </Image.RenderTransform>
+                </Image>
+            </Grid>
             <Border Background="#3A3A3A" BorderBrush="#666666" BorderThickness="2"
                     Visibility="{Binding ShowErrorOverlay, Converter={StaticResource BoolToVisibilityConverter}}">
                 <TextBlock Text="画像を読み込めませんでした" Foreground="#AAAAAA"
